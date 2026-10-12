@@ -9707,7 +9707,7 @@ async def ask_ai(q: Question, request: Request, authorization: Optional[str] = _
                                 _vision_handled = True
                             except Exception as _img_err:
                                 logger.error(f"[CLI] generate_image via proxy failed: {_img_err}")
-                                yield "data: " + json.dumps({"t": f"\n[Vision error: {_img_err}]"}) + "\n\n"
+                                yield "data: " + json.dumps({"t": "\n[Vision error: image generation failed]"}) + "\n\n"
                                 _cmeta["latency"] = time.time() - _t0
                                 _vision_handled = True
 

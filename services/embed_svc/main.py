@@ -481,7 +481,7 @@ async def health():
     except asyncio.TimeoutError:
         ollama_embed_err = "timeout 10s — Ollama not responding"
     except Exception as e:
-        ollama_embed_err = f"{type(e).__name__}: {e}"
+        ollama_embed_err = safe_error_detail(e)
 
     # ── Nomic (custom endpoint) embed probe ─────────────────────────
     nomic_svc_ok  = False

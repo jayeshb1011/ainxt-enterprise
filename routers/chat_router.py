@@ -154,7 +154,7 @@ async def upload_chat_files(
             except Exception as e:
 
                 logger.error(f"chat_router: parse_file failed for {filename}: {e}")
-                parsed_text = f"[Parse error: {e}]"
+                parsed_text = "[Parse error: this file could not be read]"
 
             # ── Compliance check ────────────────────────────────
             blocked           = False

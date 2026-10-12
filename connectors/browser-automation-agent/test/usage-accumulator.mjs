@@ -114,7 +114,7 @@ function eq(name, got, want) {
   eq("notes: fallback deduped", acc.notes.length, 1);
   // Extract the URLs from the note and compare exactly (a bare substring check on a URL
   // is what js/incomplete-url-substring-sanitization flags).
-  eq("notes: names the endpoint", (acc.notes[0].match(/https?:\/\/[^\s)"']+/g) || []).includes(alt), true);
+  eq("notes: names the endpoint", (acc.notes[0].match(/https?:\/\/[^\s)"']+/g) || []).some((u) => u === alt), true);
   accumulateUsage(acc, { usage: null, servedBy: "https://third.example/v1", isFallback: true });
   eq("notes: second endpoint adds one", acc.notes.length, 2);
 }

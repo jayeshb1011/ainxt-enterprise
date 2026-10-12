@@ -304,7 +304,9 @@ async function readGoogleSlides(id, { maxChars, find, signal }) {
 // degrades.
 async function listSheetTabs(id, signal) {
   try {
-    const resp = await fetch(`https://docs.google.com/spreadsheets/d/${id}/htmlview`, {
+    // The host is fixed; only a document id goes into the path, and it is encoded so it
+    // cannot add path segments, a query string, or a different host.
+    const resp = await fetch(`https://docs.google.com/spreadsheets/d/${encodeURIComponent(String(id))}/htmlview`, {
       credentials: "include", signal,
     });
     if (!resp.ok) return [];

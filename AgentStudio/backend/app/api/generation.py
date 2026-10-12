@@ -368,7 +368,8 @@ def _fetch_local_models() -> tuple[list[str], str]:
     try:
         from gateway_local_llm import get_local_gateway as _get_local_gw  # type: ignore
     except Exception as e:
-        return [], f"gateway_local_llm import failed: {e}"
+        logger.warning(f"[AGENT] gateway_local_llm import failed: {e}")
+        return [], "gateway_local_llm import failed (see server log)"
     try:
         ids = list(_get_local_gw().list_models() or [])
         return ids, ""

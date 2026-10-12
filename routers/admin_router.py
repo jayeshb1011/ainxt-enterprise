@@ -145,9 +145,10 @@ async def sync_org_tree(
                 db.add(ot)
                 inserted += 1
             except Exception as e:
-                msg = f"row {i+2}: {e}"
-                logger.warning(f"org_tree row skip: {msg} — row: {row}")
-                errors.append(msg)
+                # The detail goes to the server log only; the `errors` list is returned to the
+                # caller, so it carries a constant description (py/stack-trace-exposure).
+                logger.warning(f"org_tree row skip: row {i+2}: {e} - row: {row}")
+                errors.append(f"row {i+2}: could not be processed")
 
         db.flush()
 

@@ -1446,6 +1446,14 @@ def _ui_redirect(connector_name: str, success: bool, error: str = "") -> str:
 
 
 def _oauth_complete(connector_name: str, success: bool, error: str = "") -> HTMLResponse:
+    # `connector_name` is a URL path parameter. Take the name that is shown/embedded in this
+    # page from the REGISTRY's own list (by equality), never from the request: an unknown
+    # name becomes the neutral "connector" (py/reflective-xss).
+    try:
+        _known_names = [str(d.get("name")) for d in (connector_registry.get_available() or [])]
+    except Exception:
+        _known_names = []
+    connector_name = next((n for n in _known_names if n == connector_name), "connector")
     # Never reflect provider- or exception-supplied text into this page (reflected XSS /
     # information exposure): log the real error server-side and show a fixed code.
     if error:

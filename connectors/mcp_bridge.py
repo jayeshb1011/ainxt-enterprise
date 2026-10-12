@@ -1513,65 +1513,69 @@ def _resolve_file_path_attachment(raw_path: str, user_id: str = ""):
         home / "Documents",
     ]
 
-    path: Path | None = None
+    # Every candidate is paired with the root(s) it must stay under:
+    #  - absolute path: only under the user's home directory or /work (defence-in-depth
+    #    against prompt-injection-driven exfiltration - never arbitrary system paths);
+    #  - relative / bare filename: under one of the search bases (no ../ escape).
+    attempts: list = []
     if candidate.is_absolute():
-        resolved = Path(_os.path.realpath(str(candidate)))
-        # Defense-in-depth against prompt-injection-driven exfiltration: an
-        # absolute path is only honoured when it resolves under the user's
-        # home directory or /work — never arbitrary filesystem-wide paths
-        # (e.g. OS/system files outside the user's own data). This still
-        # covers every documented use case (Downloads/Desktop/Documents/
-        # any other folder under the user's profile, or /work).
         _allowed_roots = [home.resolve(), Path("/work").resolve()] if _os.name != "nt" else [home.resolve()]
-        # realpath + startswith containment check (the form CodeQL recognises as a
-        # path-injection barrier); both sides are realpath'd so casing/symlinks agree.
-        _resolved_s = _os.path.realpath(str(resolved))
-        _os_path_ok = False
-        for _root in _allowed_roots:
-            _root_s = _os.path.realpath(str(_root)).rstrip("\\/")
-            if _resolved_s == _root_s or _resolved_s.startswith(_root_s + _os.sep):
-                _os_path_ok = True
-                break
-        if _os_path_ok and resolved.is_file():
-            path = resolved
-        elif resolved.is_file():
-            logger.warning(f"cowork_mcp: rejected out-of-scope absolute attachment path: {resolved}")
+        attempts.append((str(candidate), _allowed_roots))
     else:
         for base in search_bases:
-            try:
-                # Relative lookups must stay inside the search base (no ../ escape).
-                from core.path_safety import safe_join_path as _safe_join
-                attempt = Path(_safe_join(str(base), str(candidate)))
-                if attempt.is_file():
-                    path = attempt
-                    break
-            except Exception:
-                continue
+            attempts.append((_os.path.join(str(base), str(candidate)), [base]))
 
-    if path is None:
-        logger.warning(f"cowork_mcp: attachment file not found: {raw!r}")
-        return None
+    for cand_raw, roots in attempts:
+        cand_s = _os.path.realpath(cand_raw)
+        in_scope = False
+        for _root in roots:
+            root_s = _os.path.realpath(str(_root)).rstrip("\\/")
+            # realpath + startswith containment check: this guard directly wraps every
+            # filesystem access below (the form CodeQL recognises as a path-injection barrier).
+            if cand_s.startswith(root_s + _os.sep):
+                in_scope = True
+                if _os.path.isfile(cand_s):
+                    return _read_local_attachment(cand_s)
+                break
+        if not in_scope and candidate.is_absolute():
+            logger.warning(f"cowork_mcp: rejected out-of-scope absolute attachment path: {cand_s}")
 
-    ext = path.suffix.lower().lstrip(".")
+    logger.warning(f"cowork_mcp: attachment file not found: {raw!r}")
+    return None
+
+
+def _read_local_attachment(path_s: str):
+    """Read an ALREADY containment-checked local file into a Graph fileAttachment dict.
+
+    Only call this from inside the realpath+startswith guard in
+    `_resolve_file_path_attachment`.
+    """
+    import base64
+    import os as _os
+
+    name = _os.path.basename(path_s)
+    ext = _os.path.splitext(name)[1].lower().lstrip(".")
     mime = _ATTACHMENT_MIME_MAP.get(ext)
     if not mime:
-        logger.warning(f"cowork_mcp: unsupported attachment type .{ext} for {path.name}")
+        logger.warning(f"cowork_mcp: unsupported attachment type .{ext} for {name}")
         return None
 
     max_bytes = int(_os.getenv("M365_ATTACHMENT_FILE_MAX_BYTES", str(10 * 1024 * 1024)))
     try:
-        if path.stat().st_size > max_bytes:
-            logger.warning(f"cowork_mcp: attachment too large ({path.stat().st_size} bytes): {path.name}")
+        size = _os.path.getsize(path_s)
+        if size > max_bytes:
+            logger.warning(f"cowork_mcp: attachment too large ({size} bytes): {name}")
             return None
-        data = path.read_bytes()
+        with open(path_s, "rb") as fh:
+            data = fh.read()
     except Exception as exc:
-        logger.warning(f"cowork_mcp: local attachment read failed {path}: {exc}")
+        logger.warning(f"cowork_mcp: local attachment read failed {name}: {exc}")
         return None
 
-    logger.info(f"cowork_mcp: resolved local attachment {path.name} ({len(data)} bytes)")
+    logger.info(f"cowork_mcp: resolved local attachment {name} ({len(data)} bytes)")
     return {
         "@odata.type": "#microsoft.graph.fileAttachment",
-        "name": path.name,
+        "name": name,
         "contentType": mime,
         "contentBytes": base64.b64encode(data).decode("utf-8"),
     }
