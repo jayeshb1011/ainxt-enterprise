@@ -161,7 +161,7 @@
     "read-excel-file": "^9.3.5"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.4",
+    "@electron/rebuild": "^4.2.1",
     "electron": "^41.10.6",
     "electron-builder": "^26.8.1"
   },
