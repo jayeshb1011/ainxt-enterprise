@@ -9,7 +9,7 @@ uvicorn[standard]>=0.30.0
 
 # LLM SDKs
 anthropic>=0.40.0
-openai>=1.50.0
+openai>=3.27.0
 google-genai>=1.0.0
 
 # HTTP client (proxy streaming)
