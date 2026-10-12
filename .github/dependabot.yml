@@ -1,12 +1,60 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Dependabot version updates.
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# One entry per ecosystem + directory that holds a real manifest. Security alerts and
+# security-update PRs are separate from this file and do not depend on it.
+#
+# Not configured on purpose (add later if wanted): the root package.json, ainxt-bridge and
+# skills/*/lib package.json files (no lockfiles), the Dockerfiles, and .github/workflows.
 
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  # ---------------- Python (pip) ----------------
+  - package-ecosystem: "pip"
+    directory: "/" # requirements.txt (+ pyproject.toml)
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+
+  - package-ecosystem: "pip"
+    directory: "/services/discussions_svc"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+
+  - package-ecosystem: "pip"
+    directory: "/services/llm_proxy"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+
+  # ---------------- JavaScript (npm) ----------------
+  - package-ecosystem: "npm"
+    directory: "/ai-ui"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+
+  - package-ecosystem: "npm"
+    directory: "/desktop"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+
+  - package-ecosystem: "npm"
+    directory: "/office-addin"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+
+  - package-ecosystem: "npm"
+    directory: "/AgentStudio/frontend"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+
+  - package-ecosystem: "npm"
+    directory: "/AgentStudio"
     schedule:
       interval: "weekly"
     target-branch: "main"
