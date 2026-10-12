@@ -220,9 +220,9 @@ const DEVTOOLS = isDev || process.env.AINXT_DEVTOOLS === "1";
 const INSECURE_TLS = process.env.AINXT_TLS_INSECURE === "1" && process.env.NODE_ENV !== "production";
 // Shared agent for main-process Node https calls (SSO exchange/refresh). Node's
 // https has its own trust store, so the Chromium switch below does NOT cover it.
-const _insecureHttpsAgent = INSECURE_TLS
-? new (require("https").Agent)({ rejectUnauthorized: false })
-: new (require("https").Agent)({ rejectUnauthorized: true });
+// Certificate verification is ON unless INSECURE_TLS (explicit env opt-in AND
+// NODE_ENV !== "production") is set - one agent, one expression, no hard-coded `false`.
+const _insecureHttpsAgent = new (require("https").Agent)({ rejectUnauthorized: !INSECURE_TLS });
 if (INSECURE_TLS) {
 // Applies to the underlying Chromium net stack (covers loadURL + fetch).
 app.commandLine.appendSwitch("ignore-certificate-errors");
@@ -934,6 +934,50 @@ const first = cmd.trim().split(/\s+/)[0].replace(/^.*[/\\]/, "");  // basename o
 return ALLOWED_COMMANDS.has(first);
 }
 
+// Split an ALREADY-VALIDATED command string (see _isSafeCommand: no shell
+// metacharacters) into argv, honouring simple single/double quotes.
+function _tokenizeCommand(cmd) {
+const out = [];
+let cur = "";
+let quote = null;
+let started = false;
+for (const ch of String(cmd)) {
+if (quote) {
+if (ch === quote) quote = null;
+else cur += ch;
+} else if (ch === '"' || ch === "'") {
+quote = ch;
+started = true;
+} else if (/\s/.test(ch)) {
+if (started || cur) { out.push(cur); cur = ""; started = false; }
+} else {
+cur += ch;
+}
+}
+if (started || cur) out.push(cur);
+return out;
+}
+
+// On Windows these are .cmd shims, which Node refuses to spawn without a shell.
+const _WIN_SHELL_SHIMS = new Set(["npm", "yarn", "mvn", "gradle"]);
+
+// Run an allow-listed command WITHOUT a shell: the binary comes from the
+// ALLOWED_COMMANDS constant (never the caller's path), arguments are an argv array,
+// so nothing the caller typed is ever interpreted by /bin/sh or cmd.exe (CWE-78).
+function _runAllowedCommand(cmd, cwd) {
+const { execFileSync, execSync } = require("child_process");
+const argv = _tokenizeCommand(cmd);
+const base = (argv[0] || "").replace(/^.*[/\\]/, "");
+const bin = [...ALLOWED_COMMANDS].find((c) => c === base);
+if (!bin) throw new Error("Command not allowed.");
+const opts = { cwd: cwd || process.env.HOME, encoding: "utf-8", timeout: 15000 };
+if (process.platform === "win32" && _WIN_SHELL_SHIMS.has(bin)) {
+// .cmd shims need a shell on Windows; the string already passed _isSafeCommand.
+return execSync(cmd, opts);
+}
+return execFileSync(bin, argv.slice(1), opts);
+}
+
 // SSE sessions for the MCP-protocol view of the local tools (used by the Buddy
 // full agent via --mcp-config). Keyed by sessionId → response stream.
 const _mcpSseSessions = new Map();
@@ -1018,8 +1062,8 @@ return _replaceUntilStable(s, /<[^>]*>/g, "");
 // Remove whole <script>/<style> blocks to a fixed point.
 function _stripScriptStyleBlocks(s) {
 return _replaceUntilStable(
-_replaceUntilStable(s, /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ""),
-/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi,
+_replaceUntilStable(s, /<script\b[^>]*>[\s\S]*?<\/script[^>]*>/gi, ""),
+/<style\b[^>]*>[\s\S]*?<\/style[^>]*>/gi,
 ""
 );
 }
@@ -1978,8 +2022,7 @@ return { success: true, result: { files, count: files.length } };
 }
 if (tool === "execute_terminal") {
 if (!_isSafeCommand(input.command)) return { success: false, error: `Command not allowed.` };
-const { execSync } = require("child_process");
-const output = execSync(input.command, { cwd: input.cwd || process.env.HOME, encoding: "utf-8", timeout: 15000 });
+const output = _runAllowedCommand(input.command, input.cwd);
 return { success: true, result: { output: output.slice(0, 10000) } };
 }
 return { success: false, error: `Unknown tool: ${tool}` };
@@ -2454,12 +2497,7 @@ req.on("end", async () => {
       if (!_isSafeCommand(input.command)) {
         throw new Error(`Command '${input.command.split(" ")[0]}' is not in the allowed list.`);
       }
-      const { execSync } = require("child_process");
-      const output = execSync(input.command, {
-        cwd: input.cwd || process.env.HOME,
-        encoding: "utf-8",
-        timeout: 15000,
-      });
+      const output = _runAllowedCommand(input.command, input.cwd);
       result = { output: output.slice(0, 10000) };
 
     } else {

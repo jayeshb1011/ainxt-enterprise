@@ -15,7 +15,6 @@ give callers a single, consistent way to:
 """
 from __future__ import annotations
 
-from core.config import IS_PROD
 from core.logger import logger
 
 DEFAULT_GENERIC_MESSAGE = "An internal error occurred. Please try again or contact support."
@@ -29,22 +28,34 @@ def safe_error_detail(
     """
     Log ``e`` with full traceback and return a message safe to send to clients.
 
-    In non-production environments the original exception message is
-    returned so developers retain the detail they're used to. In production
-    (``IS_PROD`` True) a generic message is returned instead so stack traces,
-    paths, queries, etc. are never exposed to external callers.
+    The returned string is ALWAYS a constant, picked from the exception's
+    *type* - it never contains any part of the exception message, traceback,
+    paths, queries, etc., in any environment. The full detail is only ever
+    written to the server-side log (``logger.error(..., exc_info=True)``).
+
+    (Earlier versions returned ``str(e)`` outside production for developer
+    convenience. That made every caller a stack-trace exposure in CodeQL's
+    eyes, because the exception text flowed through this helper into the
+    response. Developers should read the server log instead.)
 
     Args:
         e: The caught exception.
         context: Optional short description of where/what failed, used only
             in the server-side log line (never returned to the client).
-        generic: Optional override for the production-safe message.
+        generic: Optional override for the fallback message.
 
     Returns:
-        A string suitable for use as an HTTP error ``detail``/``error`` field.
+        A constant string suitable for an HTTP error ``detail``/``error`` field.
     """
     log_msg = f"{context}: {e}" if context else str(e)
     logger.error(log_msg, exc_info=True)
-    if IS_PROD:
-        return generic
-    return str(e)
+    # Constants only - chosen by type, so no exception content reaches the caller.
+    if isinstance(e, (TimeoutError,)):
+        return "The operation timed out. Please try again."
+    if isinstance(e, PermissionError):
+        return "You do not have permission to perform this operation."
+    if isinstance(e, (ValueError, TypeError, KeyError, LookupError)):
+        return "The request could not be processed because some input was invalid."
+    if isinstance(e, (ConnectionError, OSError)):
+        return "A dependent service or resource is currently unavailable. Please try again."
+    return generic

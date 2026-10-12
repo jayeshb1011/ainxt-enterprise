@@ -1446,6 +1446,11 @@ def _ui_redirect(connector_name: str, success: bool, error: str = "") -> str:
 
 
 def _oauth_complete(connector_name: str, success: bool, error: str = "") -> HTMLResponse:
+    # Never reflect provider- or exception-supplied text into this page (reflected XSS /
+    # information exposure): log the real error server-side and show a fixed code.
+    if error:
+        logger.warning(f"OAuth connect failed for connector {connector_name!r}: {str(error)[:200]!r}")
+        error = "connection_failed"
     target = _ui_redirect(connector_name, success, error)
     payload = {
         "type": "ainxt:connector-oauth",

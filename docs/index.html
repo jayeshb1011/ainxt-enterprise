@@ -10425,30 +10425,10 @@
                 .replace(/'/g, '&#39;');
         }
 
-        // Insert mermaid's SVG output as DOM nodes (never via innerHTML) after
-        // dropping anything executable: <script>, on* handlers and javascript:
-        // URLs. Defence in depth on top of mermaid's securityLevel: 'strict'.
-        function insertSanitizedSvg(element, svgMarkup) {
-            const doc = new DOMParser().parseFromString(String(svgMarkup), 'image/svg+xml');
-            const root = doc.documentElement;
-            if (!root || root.nodeName.toLowerCase() === 'parsererror') {
-                element.textContent = '';
-                return;
-            }
-            root.querySelectorAll('script').forEach((n) => n.remove());
-            root.querySelectorAll('*').forEach((n) => {
-                Array.from(n.attributes).forEach((a) => {
-                    const name = a.name.toLowerCase();
-                    const val = String(a.value).trim().toLowerCase();
-                    if (name.startsWith('on') ||
-                        ((name === 'href' || name === 'xlink:href') && val.startsWith('javascript:'))) {
-                        n.removeAttribute(a.name);
-                    }
-                });
-            });
-            element.replaceChildren(document.importNode(root, true));
-        }
-
+        // Render each diagram IN PLACE with mermaid.run(): mermaid reads the node's own
+        // content and writes the SVG back itself (securityLevel: 'strict' set in
+        // mermaid.initialize), so no diagram text or SVG string ever passes through this
+        // page's code or an innerHTML assignment.
         async function renderMermaidDiagrams() {
             const mermaidElements = document.querySelectorAll('.mermaid');
             
@@ -10458,11 +10438,14 @@
                 element.id = id;
                 
                 try {
-                    const { svg } = await mermaid.render(id + '-svg', element.textContent);
-                    insertSanitizedSvg(element, svg);
+                    await mermaid.run({ nodes: [element] });
                 } catch (error) {
                     console.error('Mermaid rendering error:', error);
-                    element.innerHTML = `<pre>Error rendering diagram:\n${escapeHtml(element.textContent)}</pre>`;
+                    // Show the diagram source as plain text (textContent, never innerHTML).
+                    const failedSource = element.textContent;
+                    const pre = document.createElement('pre');
+                    pre.textContent = 'Error rendering diagram:\n' + failedSource;
+                    element.replaceChildren(pre);
                 }
             }
         }

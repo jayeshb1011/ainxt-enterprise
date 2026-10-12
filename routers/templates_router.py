@@ -301,8 +301,12 @@ def init_operation(
         "generated_artifacts/generated_tests",
         "generated_artifacts/generated_sql",
     ]:
-        (base / sub).mkdir(parents=True, exist_ok=True)
-        created.append(str((base / sub).relative_to(ainxt_root)))
+        try:
+            sub_dir = Path(safe_join_path(str(base), sub))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid template identifier")
+        sub_dir.mkdir(parents=True, exist_ok=True)
+        created.append(str(sub_dir.relative_to(ainxt_root)))
 
     # metadata/status.md
     status_content = f"""# Operation Status

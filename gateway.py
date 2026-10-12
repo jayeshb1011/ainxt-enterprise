@@ -350,19 +350,23 @@ def _resolve_model_id(model: str) -> str:
     # [^)]* (not [^)]+) so an empty "()" — a display label built from an
     # unresolved/blank model id — still matches instead of falling through to
     # returning the entire raw label string as a bogus "model id".
-    import re as _re
-    # Cap length before the regex: the trailing `\s*(?:\[...\])?\s*$` has two
-    # `\s*` runs around an optional group, which is ambiguous (any split of a
-    # run of whitespace between the two `\s*`s) and can make a failing match
-    # polynomial in input length (CodeQL py/polynomial-redos). Real model/
-    # display-label strings are always short, so this never affects a
-    # legitimate value.
+    # Plain string logic (linear, no regex) equivalent to the old
+    # `\(([^()]*)\)(?:\s*\[[^\]]*\])?\s*$` search - a regex here was flagged as
+    # polynomial ReDoS (py/polynomial-redos). Grammar: "(<id>)" optionally followed
+    # by whitespace and a "[...]" suffix, then optional trailing whitespace.
     model = model[:256]
-    # Unambiguous form: no adjacent `\s*` runs, and `[^()]*` stops at the next "(" so a
-    # long run of "(" cannot trigger quadratic rescans.
-    m = _re.search(r'\(([^()]*)\)(?:\s*\[[^\]]*\])?\s*$', model)
-    if m:
-        return m.group(1).strip() or "unknown"
+    _tail = model.rstrip()
+    if _tail.endswith("]"):
+        _lb = _tail.rfind("[")
+        if _lb == -1 or "]" in _tail[_lb + 1:-1]:
+            return model                      # malformed "[...]" suffix: no label wrapper
+        _tail = _tail[:_lb].rstrip()
+    if _tail.endswith(")"):
+        _lp = _tail.rfind("(")
+        if _lp != -1:
+            _inner = _tail[_lp + 1:-1]
+            if ")" not in _inner:             # "(" is excluded by rfind; ")" must not appear
+                return _inner.strip() or "unknown"
     return model
 
 
@@ -15915,9 +15919,11 @@ if _os.path.isdir(_abs_dist):
         # touching the filesystem with it.
         _root_abs = _os.path.abspath(_abs_dist)
         candidate = _os.path.normpath(_os.path.join(_root_abs, full_path))
-        _is_safe = bool(full_path) and candidate.startswith(_root_abs + _os.sep)
-        if _is_safe and _os.path.isfile(candidate):
-            return _FR_abs(candidate)
+        # The startswith check guards the filesystem use DIRECTLY (not via a stored flag) -
+        # the shape CodeQL's path-injection query recognises as a barrier.
+        if full_path and candidate.startswith(_root_abs + _os.sep):
+            if _os.path.isfile(candidate):
+                return _FR_abs(candidate)
         resp = _FR_abs(_os.path.join(_abs_dist, "index.html"))
         resp.headers["Cache-Control"] = "no-store, must-revalidate"
         resp.headers["Pragma"]        = "no-cache"
@@ -15971,11 +15977,13 @@ if _os.path.isdir(_ui_dist):
         # touching the filesystem with it.
         _root_ui = _os.path.abspath(_ui_dist)
         candidate = _os.path.normpath(_os.path.join(_root_ui, full_path))
-        _is_safe = bool(full_path) and candidate.startswith(_root_ui + _os.sep)
-        if _is_safe and _os.path.isfile(candidate):
-            # Named static file (e.g. sw.js, manifest.json) — let
-            # NoCacheMiddleware decide the headers based on the path.
-            return _FR(candidate)
+        # The startswith check guards the filesystem use DIRECTLY (not via a stored flag) -
+        # the shape CodeQL's path-injection query recognises as a barrier.
+        if full_path and candidate.startswith(_root_ui + _os.sep):
+            if _os.path.isfile(candidate):
+                # Named static file (e.g. sw.js, manifest.json) - let
+                # NoCacheMiddleware decide the headers based on the path.
+                return _FR(candidate)
         # SPA fallback → always serve fresh index.html.
         # NoCacheMiddleware applies no-store, but set it explicitly too
         # so it's impossible to accidentally bypass.

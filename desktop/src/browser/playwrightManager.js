@@ -334,17 +334,20 @@ const TOOLS = [
 ];
 
 async function executeTool(name, input = {}, opts = {}) {
-  const fn = {
-    browser_navigate: api.navigate,
-    browser_extract: api.extract,
-    browser_screenshot: api.screenshot,
-    browser_wait_for: api.wait_for,
-    browser_back: api.back,
-    browser_click: api.click,
-    browser_type: api.type,
-    browser_select: api.select,
-  }[name];
-  if (!fn) throw new Error(`Unknown browser tool: ${name}`);
+  // A Map (not an object literal): `{...}[name]` would also resolve inherited keys such as
+  // "constructor" / "__proto__" to Object.prototype members, which would then be called.
+  const tools = new Map([
+    ["browser_navigate", api.navigate],
+    ["browser_extract", api.extract],
+    ["browser_screenshot", api.screenshot],
+    ["browser_wait_for", api.wait_for],
+    ["browser_back", api.back],
+    ["browser_click", api.click],
+    ["browser_type", api.type],
+    ["browser_select", api.select],
+  ]);
+  const fn = typeof name === "string" ? tools.get(name) : undefined;
+  if (typeof fn !== "function") throw new Error(`Unknown browser tool: ${String(name)}`);
   return fn(input, opts);
 }
 

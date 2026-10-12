@@ -1498,8 +1498,13 @@ def _resolve_file_path_attachment(raw_path: str, user_id: str = ""):
 
     # ── 2 & 3. Filesystem search ──────────────────────────────────────────────────
 
-    candidate = Path(raw).expanduser()
     home = Path.home()
+    # Expand only a leading "~" / "~/" against the CURRENT user's home. Path.expanduser()
+    # would also resolve "~otheruser" through the system user database.
+    _raw_s = str(raw)
+    if _raw_s == "~" or _raw_s.startswith(("~/", "~\\")):
+        _raw_s = str(home) + _raw_s[1:]
+    candidate = Path(_raw_s)
     search_bases = [
         Path.cwd().resolve(),
         Path("/work"),
