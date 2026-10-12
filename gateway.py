@@ -267,8 +267,10 @@ _pt_scan_ledger_lock = threading.Lock()
 
 
 def _pt_ledger_key(user_id: str, role: str, text: str) -> str:
-    return hashlib.sha256(
-        f"{user_id or ''}\x00{role}\x00{text}".encode("utf-8", "ignore")
+    # In-memory ledger key (not a credential store). BLAKE2b, 256-bit digest.
+    return hashlib.blake2b(
+        f"{user_id or ''}\x00{role}\x00{text}".encode("utf-8", "ignore"),
+        digest_size=32,
     ).hexdigest()
 
 
@@ -356,7 +358,9 @@ def _resolve_model_id(model: str) -> str:
     # display-label strings are always short, so this never affects a
     # legitimate value.
     model = model[:256]
-    m = _re.search(r'\(([^)]*)\)\s*(?:\[[^\]]*\])?\s*$', model)
+    # Unambiguous form: no adjacent `\s*` runs, and `[^()]*` stops at the next "(" so a
+    # long run of "(" cannot trigger quadratic rescans.
+    m = _re.search(r'\(([^()]*)\)(?:\s*\[[^\]]*\])?\s*$', model)
     if m:
         return m.group(1).strip() or "unknown"
     return model
@@ -1565,8 +1569,11 @@ if _ABS_ROUTERS_LOADED:
             or os.path.join(os.path.dirname(__file__), "AgentStudio", "tmp")
         ).resolve()
         _base.mkdir(parents=True, exist_ok=True)
-        _target = (_base / relative_path).resolve()
         try:
+            # normpath + startswith containment check (core.path_safety) — the form
+            # CodeQL recognises as a path-injection barrier.
+            from core.path_safety import safe_join_path as _safe_join_gp
+            _target = _pathlib.Path(_safe_join_gp(str(_base), str(relative_path)))
             _rel = _target.relative_to(_base)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid filename")
@@ -3178,8 +3185,9 @@ def cache_key(question, repo_filter, model_hint=None, user_id=None, rag_mode=Non
     # to a Generic question with identical prompt text (context isolation).
     raw = f"v3:{uid}:{repo}:{model}:{mode}:{question}"
 
-    return hashlib.sha256(
-        raw.strip().lower().encode()
+    # Cache key only (not a credential store). BLAKE2b, 256-bit digest.
+    return hashlib.blake2b(
+        raw.strip().lower().encode(), digest_size=32
     ).hexdigest()
 
 
@@ -13194,8 +13202,8 @@ def health():
         finally:
             _hdb.close()
     except Exception as _he:
-        checks["postgres"] = f"error: {_he}"
-        checks["database"] = f"error: {_he}"   # backward compat alias
+        checks["postgres"] = f"error: {safe_error_detail(_he)}"
+        checks["database"] = f"error: {safe_error_detail(_he)}"   # backward compat alias
         _critical_fail = True
 
     # ── Redis check (critical, legacy alias for dashboards) ──────
@@ -13203,7 +13211,7 @@ def health():
         redis_client.ping()
         checks["redis"] = "ok"
     except Exception as _re:
-        checks["redis"] = f"error: {_re}"
+        checks["redis"] = f"error: {safe_error_detail(_re)}"
         _critical_fail = True
 
     # ── KV per-DB check ───────────────────────────────────────────
@@ -13220,7 +13228,7 @@ def health():
         # already accounted for by the legacy `redis` probe above, so counting
         # it again here would double-weight the same fault.
     except Exception as _kvbe:
-        checks["kv"] = f"error: {_kvbe}"
+        checks["kv"] = f"error: {safe_error_detail(_kvbe)}"
 
     # ── Embed service check (non-critical) ───────────────────────
     try:
@@ -13233,7 +13241,7 @@ def health():
             checks["embed_svc"] = f"degraded: HTTP {_r.status_code}"
             _non_critical_fail = True
     except Exception as _ee:
-        checks["embed_svc"] = f"error: {_ee}"
+        checks["embed_svc"] = f"error: {safe_error_detail(_ee)}"
         _non_critical_fail = True
 
     # ── Ollama check (non-critical) ──────────────────────────────
@@ -13249,7 +13257,7 @@ def health():
             checks["ollama"] = f"degraded: HTTP {_r.status_code}"
             _non_critical_fail = True
     except Exception as _oe:
-        checks["ollama"] = f"error: {_oe}"
+        checks["ollama"] = f"error: {safe_error_detail(_oe)}"
         _non_critical_fail = True
 
     # ── Docker sandbox check (non-critical) ─────────────────────
@@ -13267,7 +13275,7 @@ def health():
             checks["docker"] = "unavailable (fallback: subprocess executor)"
             _non_critical_fail = True
     except Exception as _dke:
-        checks["docker"] = f"error: {_dke}"
+        checks["docker"] = f"error: {safe_error_detail(_dke)}"
         _non_critical_fail = True
 
     # ── Circuit breakers ─────────────────────────────────────────
@@ -13297,7 +13305,7 @@ def health():
                 checks["injection_svc"] = f"degraded: HTTP {_inj_r.status_code}"
                 _non_critical_fail = True
         except Exception as _inj_he:
-            checks["injection_svc"] = f"error: {_inj_he}"
+            checks["injection_svc"] = f"error: {safe_error_detail(_inj_he)}"
             _non_critical_fail = True
     else:
         checks["injection_svc"] = "not configured (INJECTION_SVC_URL not set)"
@@ -15901,17 +15909,13 @@ if _os.path.isdir(_abs_dist):
     @app.get("/build-studio/{full_path:path}", include_in_schema=False)
     async def _serve_abs_spa(full_path: str = ""):
         import pathlib as _pathlib
-        candidate = _os.path.join(_abs_dist, full_path)
         # Manual path join (unlike the StaticFiles mounts above) has no
-        # built-in traversal guard — verify the resolved path still lives
-        # under _abs_dist before ever touching the filesystem with it.
-        _is_safe = False
-        if full_path:
-            try:
-                _pathlib.Path(candidate).resolve().relative_to(_pathlib.Path(_abs_dist).resolve())
-                _is_safe = True
-            except ValueError:
-                _is_safe = False
+        # built-in traversal guard - normpath + startswith containment check
+        # (the form CodeQL recognises as a path-injection barrier) before ever
+        # touching the filesystem with it.
+        _root_abs = _os.path.abspath(_abs_dist)
+        candidate = _os.path.normpath(_os.path.join(_root_abs, full_path))
+        _is_safe = bool(full_path) and candidate.startswith(_root_abs + _os.sep)
         if _is_safe and _os.path.isfile(candidate):
             return _FR_abs(candidate)
         resp = _FR_abs(_os.path.join(_abs_dist, "index.html"))
@@ -15961,17 +15965,13 @@ if _os.path.isdir(_ui_dist):
     async def _serve_spa(full_path: str):
         from fastapi.responses import Response as _Resp
         import pathlib as _pathlib
-        candidate = _os.path.join(_ui_dist, full_path)
         # Manual path join (unlike the StaticFiles mount above) has no
-        # built-in traversal guard — verify the resolved path still lives
-        # under _ui_dist before ever touching the filesystem with it.
-        _is_safe = False
-        if full_path:
-            try:
-                _pathlib.Path(candidate).resolve().relative_to(_pathlib.Path(_ui_dist).resolve())
-                _is_safe = True
-            except ValueError:
-                _is_safe = False
+        # built-in traversal guard - normpath + startswith containment check
+        # (the form CodeQL recognises as a path-injection barrier) before ever
+        # touching the filesystem with it.
+        _root_ui = _os.path.abspath(_ui_dist)
+        candidate = _os.path.normpath(_os.path.join(_root_ui, full_path))
+        _is_safe = bool(full_path) and candidate.startswith(_root_ui + _os.sep)
         if _is_safe and _os.path.isfile(candidate):
             # Named static file (e.g. sw.js, manifest.json) — let
             # NoCacheMiddleware decide the headers based on the path.

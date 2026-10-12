@@ -48,7 +48,9 @@ digest_manager_router = APIRouter(tags=["digest-manager"])
 # ── Helpers ─────────────────────────────────────────────────────────────
 # Mirror routers/digest_hod_router.py — same light-touch email validation
 # used by routers/monthly_statement_router.py.
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Domain labels exclude '.', so the split between labels is unique (no ambiguous
+# `[^@\s]+\.[^@\s]+` overlap -> no polynomial backtracking; CodeQL py/polynomial-redos).
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$")
 
 
 def _parse_to_override(to: Optional[str]) -> Optional[str]:

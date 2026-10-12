@@ -1666,7 +1666,11 @@ export default function KbChat({
       // brackets (CodeQL js/incomplete-multi-character-sanitization) —
       // matches the double-pass convention used elsewhere in this repo
       // (see desktop/src/main.js's _extractHtml/_extractPptx).
-      const stripped = text.replace(/<[^>]+>/g, "").replace(/<[^>]+>/g, "");
+      let stripped = text;
+      for (let prev = null; prev !== stripped; ) {
+        prev = stripped;
+        stripped = stripped.replace(/<[^>]+>/g, "");
+      }
       throw new Error(`Server error ${r.status}: ${stripped.trim().slice(0, 200)}`);
     }
     const d = await r.json();

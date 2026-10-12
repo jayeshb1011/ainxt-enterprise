@@ -326,7 +326,7 @@ def patch_compliance_config(body: _ConfigPatch, _caller=Depends(require_admin_fl
         logger.info(f"Compliance config updated by admin")
         return {"updated": True, "config": new_cfg}
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, safe_error_detail(e))
 
 
 @admin_router.post("/compliance/config/reload")

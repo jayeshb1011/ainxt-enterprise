@@ -2534,7 +2534,8 @@ def delete_doc(doc_id: str, deleted_by: str = None, deleted_by_dept: str = None)
         import os as _os_del
 
         # Delete .md file
-        _md_path = _os_del.path.join(_KB_FS_ROOT, f"{doc_id}.md")
+        from core.path_safety import safe_join_path as _safe_join_del
+        _md_path = _safe_join_del(_KB_FS_ROOT, f"{doc_id}.md")
         if _os_del.path.isfile(_md_path):
             _os_del.unlink(_md_path)
             logger.info(f"[DELETE_DOC] doc_id={doc_id} removed .md file '{_md_path}'")
@@ -2564,7 +2565,7 @@ def delete_doc(doc_id: str, deleted_by: str = None, deleted_by_dept: str = None)
             pass
 
         if _orig_ext and re.fullmatch(r"[A-Za-z0-9]{1,16}", _orig_ext):
-            _orig_path = _os_del.path.join(_KB_FS_ROOT, f"{doc_id}.{_orig_ext}")
+            _orig_path = _safe_join_del(_KB_FS_ROOT, f"{doc_id}.{_orig_ext}")
             if _os_del.path.isfile(_orig_path):
                 _os_del.unlink(_orig_path)
                 logger.info(
@@ -2758,5 +2759,9 @@ def get_original_path(doc_id: str, original_ext: Optional[str] = None) -> Option
         logger.warning(f"get_original_path: rejected unsafe extension {_ext!r} for doc_id={doc_id}")
         return None
 
-    _abs = os.path.join(_KB_FS_ROOT, f"{doc_id}.{_ext}")
+    from core.path_safety import safe_join_path
+    try:
+        _abs = safe_join_path(_KB_FS_ROOT, f"{doc_id}.{_ext}")
+    except ValueError:
+        return None
     return _abs if os.path.exists(_abs) else None

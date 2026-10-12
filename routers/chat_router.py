@@ -735,7 +735,7 @@ def chat_generate_image(body: dict, current_user: dict = Depends(get_current_use
         _latency_sec = _time.perf_counter() - _img_t0
     except Exception as e:
         logger.error(f"chat_router: image-generate failed: {e}")
-        raise HTTPException(status_code=502, detail=f"image generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"image generation failed: {safe_error_detail(e)}")
 
     if not img_bytes:
         # The "BOTH providers unavailable" path: proxy returned 503 with
@@ -1209,7 +1209,11 @@ def _veo_video_path(video_id: str) -> str:
     """Resolve and verify video_id is a safe filename (no path traversal)."""
     if not re.fullmatch(r"[A-Za-z0-9_\-]{8,64}", video_id or ""):
         raise HTTPException(status_code=400, detail="invalid video id")
-    return str(Path(_media_dir()) / f"{video_id}.mp4")
+    from core.path_safety import safe_join_path
+    try:
+        return safe_join_path(str(_media_dir()), f"{video_id}.mp4")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid video id")
 
 @router.post("/chat/video-generate")
 def chat_generate_video(
@@ -1356,7 +1360,7 @@ def chat_generate_video(
         )
     except Exception as e:
         logger.error(f"chat_router: video-generate failed: {e}")
-        raise HTTPException(status_code=502, detail=f"video generation failed: {e}")
+        raise HTTPException(status_code=502, detail=f"video generation failed: {safe_error_detail(e)}")
     _veo_latency_ms = (_t_veo.monotonic() - _veo_t0) * 1000.0
 
     if not video_bytes:

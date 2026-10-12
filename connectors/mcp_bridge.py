@@ -1510,7 +1510,7 @@ def _resolve_file_path_attachment(raw_path: str, user_id: str = ""):
 
     path: Path | None = None
     if candidate.is_absolute():
-        resolved = candidate.resolve()
+        resolved = Path(_os.path.realpath(str(candidate)))
         # Defense-in-depth against prompt-injection-driven exfiltration: an
         # absolute path is only honoured when it resolves under the user's
         # home directory or /work — never arbitrary filesystem-wide paths
@@ -1518,14 +1518,15 @@ def _resolve_file_path_attachment(raw_path: str, user_id: str = ""):
         # covers every documented use case (Downloads/Desktop/Documents/
         # any other folder under the user's profile, or /work).
         _allowed_roots = [home.resolve(), Path("/work").resolve()] if _os.name != "nt" else [home.resolve()]
-        try:
-            _os_path_ok = any(
-                str(resolved).lower().startswith(str(_root).lower().rstrip("\\/") + _os.sep)
-                or resolved == _root
-                for _root in _allowed_roots
-            )
-        except Exception:
-            _os_path_ok = False
+        # realpath + startswith containment check (the form CodeQL recognises as a
+        # path-injection barrier); both sides are realpath'd so casing/symlinks agree.
+        _resolved_s = _os.path.realpath(str(resolved))
+        _os_path_ok = False
+        for _root in _allowed_roots:
+            _root_s = _os.path.realpath(str(_root)).rstrip("\\/")
+            if _resolved_s == _root_s or _resolved_s.startswith(_root_s + _os.sep):
+                _os_path_ok = True
+                break
         if _os_path_ok and resolved.is_file():
             path = resolved
         elif resolved.is_file():
@@ -1533,7 +1534,9 @@ def _resolve_file_path_attachment(raw_path: str, user_id: str = ""):
     else:
         for base in search_bases:
             try:
-                attempt = (base / candidate).resolve()
+                # Relative lookups must stay inside the search base (no ../ escape).
+                from core.path_safety import safe_join_path as _safe_join
+                attempt = Path(_safe_join(str(base), str(candidate)))
                 if attempt.is_file():
                     path = attempt
                     break

@@ -10210,6 +10210,7 @@
         // Initialize mermaid
         mermaid.initialize({
             startOnLoad: false,
+            securityLevel: 'strict',
             theme: 'default',
             themeVariables: {
                 primaryColor: '#2563eb',
@@ -10424,6 +10425,30 @@
                 .replace(/'/g, '&#39;');
         }
 
+        // Insert mermaid's SVG output as DOM nodes (never via innerHTML) after
+        // dropping anything executable: <script>, on* handlers and javascript:
+        // URLs. Defence in depth on top of mermaid's securityLevel: 'strict'.
+        function insertSanitizedSvg(element, svgMarkup) {
+            const doc = new DOMParser().parseFromString(String(svgMarkup), 'image/svg+xml');
+            const root = doc.documentElement;
+            if (!root || root.nodeName.toLowerCase() === 'parsererror') {
+                element.textContent = '';
+                return;
+            }
+            root.querySelectorAll('script').forEach((n) => n.remove());
+            root.querySelectorAll('*').forEach((n) => {
+                Array.from(n.attributes).forEach((a) => {
+                    const name = a.name.toLowerCase();
+                    const val = String(a.value).trim().toLowerCase();
+                    if (name.startsWith('on') ||
+                        ((name === 'href' || name === 'xlink:href') && val.startsWith('javascript:'))) {
+                        n.removeAttribute(a.name);
+                    }
+                });
+            });
+            element.replaceChildren(document.importNode(root, true));
+        }
+
         async function renderMermaidDiagrams() {
             const mermaidElements = document.querySelectorAll('.mermaid');
             
@@ -10434,7 +10459,7 @@
                 
                 try {
                     const { svg } = await mermaid.render(id + '-svg', element.textContent);
-                    element.innerHTML = svg;
+                    insertSanitizedSvg(element, svg);
                 } catch (error) {
                     console.error('Mermaid rendering error:', error);
                     element.innerHTML = `<pre>Error rendering diagram:\n${escapeHtml(element.textContent)}</pre>`;

@@ -999,24 +999,45 @@ throw new Error(`Desktop document extraction dependency '${name}' is not install
 }
 }
 
+// Repeat a replacement until the string stops changing. A single pass of a
+// multi-character pattern (e.g. /<[^>]*>/) can leave behind a freshly-formed
+// match (e.g. "<scr<b>ipt>" -> "<script>"), which is exactly the
+// js/incomplete-multi-character-sanitization problem.
+function _replaceUntilStable(s, re, replacement) {
+let prev;
+let out = String(s);
+do {
+prev = out;
+out = out.replace(re, replacement);
+} while (out !== prev);
+return out;
+}
+function _stripTagsFully(s) {
+return _replaceUntilStable(s, /<[^>]*>/g, "");
+}
+// Remove whole <script>/<style> blocks to a fixed point.
+function _stripScriptStyleBlocks(s) {
+return _replaceUntilStable(
+_replaceUntilStable(s, /<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ""),
+/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi,
+""
+);
+}
+
 function _decodeXmlText(s) {
-// Decode entities BEFORE stripping tags, then strip tags again afterward.
-// Decoding after a tag-strip pass (the previous order here) lets an
-// encoded "&lt;script&gt;" reconstruct a literal "<script>" tag that
-// never gets removed, since no further sanitization runs after it. The
-// final `.replace(/<[^>]+>/g, "")` below closes that gap by stripping any
-// tags that decoding may have just produced.
-return String(s || "")
+// Tags are stripped to a fixed point both BEFORE and AFTER entity decoding:
+// decoding after a single strip pass would let an encoded "&lt;script&gt;"
+// reconstruct a literal "<script>" tag that never gets removed.
+let t = String(s || "")
 .replace(/<w:tab\/>/g, "\t")
-.replace(/<w:br\/>/g, "\n")
-.replace(/<[^>]+>/g, "")
+.replace(/<w:br\/>/g, "\n");
+t = _stripTagsFully(t)
 .replace(/&lt;/g, "<")
 .replace(/&gt;/g, ">")
 .replace(/&quot;/g, '"')
 .replace(/&apos;/g, "'")
-.replace(/&amp;/g, "&")
-.replace(/<[^>]+>/g, "")
-.trim();
+.replace(/&amp;/g, "&");
+return _stripTagsFully(t).trim();
 }
 
 // Trims text to EXTRACT_TEXT_LIMIT and returns { text, warning }. `warning` is
@@ -1243,12 +1264,11 @@ const xml = await slideFile.async("string");
 // Tags are stripped both BEFORE and AFTER entity decoding: decoding after
 // a single strip pass would let an encoded "&lt;script&gt;" reconstruct a
 // literal tag that never gets removed (incomplete sanitization).
-const raw = xml
-.replace(/<a:t[^>]*>/gi, " ")   // text run open tag → space separator
-.replace(/<[^>]+>/g, "")
+const raw = _stripTagsFully(
+_stripTagsFully(xml.replace(/<a:t[^>]*>/gi, " "))   // text run open tag -> space separator
 .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
 .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")
-.replace(/<[^>]+>/g, "")
+)
 .replace(/\s+/g, " ").trim();
 
 if (raw) textParts.push(`### Slide ${i + 1}\n${raw}`);
@@ -1294,20 +1314,18 @@ const raw = await fs.promises.readFile(filePath, "utf-8");
 // Tags are stripped both BEFORE and AFTER entity decoding: decoding after
 // a single strip pass would let an encoded "&lt;script&gt;" reconstruct a
 // literal tag that never gets removed (incomplete sanitization).
-const text = raw
-.replace(/<script[\s\S]*?<\/script>/gi, "")   // remove scripts
-.replace(/<style[\s\S]*?<\/style>/gi, "")     // remove styles
+// Scripts/styles/tags are removed to a fixed point, both before and after
+// entity decoding (see _replaceUntilStable).
+const _noBlocks = _stripScriptStyleBlocks(raw)   // remove scripts + styles
 .replace(/<br\s*\/?>/gi, "\n")
 .replace(/<\/p>/gi, "\n").replace(/<\/div>/gi, "\n")
-.replace(/<\/h[1-6]>/gi, "\n").replace(/<\/li>/gi, "\n")
-.replace(/<[^>]+>/g, "")
+.replace(/<\/h[1-6]>/gi, "\n").replace(/<\/li>/gi, "\n");
+const _decoded = _stripTagsFully(_noBlocks)
 .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
 .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
 .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
-.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
-.replace(/<script[\s\S]*?<\/script>/gi, "")
-.replace(/<style[\s\S]*?<\/style>/gi, "")
-.replace(/<[^>]+>/g, "")
+.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
+const text = _stripTagsFully(_stripScriptStyleBlocks(_decoded))
 .replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 const _trimmed = _trimExtractText(text || "[HTML file appears empty]");
 return { text: _trimmed.text, warnings: _trimmed.warning ? [_trimmed.warning] : [] };
@@ -1328,14 +1346,16 @@ const xml = await contentFile.async("string");
 // before AND after decoding: decoding after a single strip pass would let
 // an encoded "&lt;script&gt;" reconstruct a literal tag that never gets
 // removed (incomplete sanitization).
-const text = xml
+const text = _stripTagsFully(
+_stripTagsFully(
+xml
 .replace(/<text:line-break[^>]*\/>/gi, "\n")
 .replace(/<\/text:p>/gi, "\n")
 .replace(/<text:tab[^>]*\/>/gi, "\t")
-.replace(/<[^>]+>/g, "")
+)
 .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
 .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")
-.replace(/<[^>]+>/g, "")
+)
 .replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 const _trimmed = _trimExtractText(text || "[ODT file appears empty]");
 return { text: _trimmed.text, warnings: _trimmed.warning ? [_trimmed.warning] : [] };
@@ -1380,7 +1400,10 @@ cellMatches.forEach((cellXml) => {
   // after a single strip pass would let an encoded "&lt;script&gt;"
   // reconstruct a literal tag that never gets removed.
   const cellText = pMatches
-    .map((p) => p.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/<[^>]+>/g, "").trim())
+    .map((p) => _stripTagsFully(
+  _stripTagsFully(p)
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")
+).trim())
     .join(" ");
   for (let r = 0; r < repeat; r++) cells.push(cellText);
 });

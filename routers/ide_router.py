@@ -505,13 +505,13 @@ async def ide_chat(body: IDEChat, request: Request, _u: dict = Depends(_require_
         if model_hint == "medium":
             # Already tried GPT — nothing left to fall back to
             logger.exception("[IDE:%s] GPT call also failed: %s", req_id, exc)
-            raise HTTPException(status_code=500, detail=f"Model error: {exc}")
+            raise HTTPException(status_code=500, detail=f"Model error: {safe_error_detail(exc)}")
         try:
             answer = await model_router.async_generate(question, model_hint="medium")
             logger.info("[IDE:%s] GPT fallback succeeded", req_id)
         except Exception as fallback_exc:
             logger.exception("[IDE:%s] GPT fallback also failed: %s", req_id, fallback_exc)
-            raise HTTPException(status_code=500, detail=f"Model error: {exc}")
+            raise HTTPException(status_code=500, detail=f"Model error: {safe_error_detail(exc)}")
 
     # Capture token usage immediately after generate() so that
     # _propagate_tokens() values are not overwritten by a subsequent request.

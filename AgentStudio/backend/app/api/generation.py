@@ -831,7 +831,7 @@ async def generate_workflow(
             raise ValueError("LLM did not include an end node")
         return GenerateWorkflowResponse(name=name, graph_data={"nodes": nodes, "edges": edges})
     except json.JSONDecodeError as e:
-        raise HTTPException(status_code=422, detail=f"LLM returned invalid JSON: {e}")
+        raise HTTPException(status_code=422, detail=f"LLM returned invalid JSON: {safe_error_detail(e)}")
     except ValueError as e:
         raise HTTPException(status_code=422, detail=safe_error_detail(e))
     except Exception as e:

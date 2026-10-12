@@ -157,7 +157,7 @@ async def oauth_start(
         oauth2_handler.save_state(state, user_id, connector_name, pkce_verifier)
     except Exception as e:
         logger.error(f"connectors_router.oauth_start: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to start OAuth flow: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start OAuth flow: {safe_error_detail(e)}")
 
     return {"authorize_url": authorize_url, "state": state}
 
@@ -232,7 +232,7 @@ async def oauth_callback(
 
     except Exception as e:
         logger.error(f"connectors_router.oauth_callback: {e}")
-        return _oauth_complete(connector_name, success=False, error=str(e)[:100])
+        return _oauth_complete(connector_name, success=False, error=safe_error_detail(e)[:100])
 
 
 # ── API key / bearer token storage ───────────────────────────────────────────

@@ -627,8 +627,11 @@ async def download_generated_file(
     """
     base = Path(GENERATED_FILES_DIR).resolve()
     base.mkdir(parents=True, exist_ok=True)
-    target = (base / filename).resolve()
     try:
+        # normpath + startswith containment check (core.path_safety) — the form
+        # CodeQL recognises as a path-injection barrier.
+        from core.path_safety import safe_join_path as _safe_join
+        target = Path(_safe_join(str(base), filename))
         rel = target.relative_to(base)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid filename")

@@ -15,6 +15,7 @@
 # ============================================================
 
 import os
+import urllib.parse
 import uuid
 import re
 from datetime import datetime
@@ -232,13 +233,23 @@ def _check_protected_branch(repo_url: str, branch: str) -> bool:
             return resp.status_code == 200
 
         # GitLab (self-hosted or gitlab.com): GET /api/v4/projects/{id}/protected_branches/{branch}
-        # SSRF guard — `host` came straight from the caller-supplied repo_url;
-        # refuse to call out to a private/internal/metadata address.
-        if _is_unsafe_outbound_host(host):
-            logger.warning(f"[index_router] refusing branch-protection check to unsafe host: {host!r}")
+        # SSRF guard (CWE-918): `host` came straight from the caller-supplied repo_url, so never
+        # call out to it directly. Only hosts on the operator-configured allowlist are queried,
+        # and the URL is built from the matched ALLOWLIST ENTRY, not from request data. For any
+        # other host the advisory pre-check is skipped (False == "no extra warning").
+        # Configure self-hosted GitLab hosts via INDEX_PROTECTED_BRANCH_CHECK_HOSTS
+        # (comma-separated hostnames); default is gitlab.com.
+        _allowed_hosts = [
+            h.strip().lower()
+            for h in os.getenv("INDEX_PROTECTED_BRANCH_CHECK_HOSTS", "gitlab.com").split(",")
+            if h.strip()
+        ]
+        _matched_host = next((h for h in _allowed_hosts if h == host.lower()), None)
+        if _matched_host is None or _is_unsafe_outbound_host(_matched_host):
+            logger.info(f"[index_router] skipping branch-protection check: host not on allowlist: {host!r}")
             return False
-        encoded_path = path.replace("/", "%2F")
-        api_url = f"https://{host}/api/v4/projects/{encoded_path}/protected_branches/{branch}"
+        encoded_path = urllib.parse.quote(path, safe="")
+        api_url = f"https://{_matched_host}/api/v4/projects/{encoded_path}/protected_branches/{urllib.parse.quote(branch, safe='')}"
         headers = {}  # branch-protection check is unauthenticated; token injected at clone time
         resp = httpx.get(api_url, headers=headers, timeout=5.0)
         return resp.status_code == 200

@@ -264,13 +264,17 @@ def init_operation(
     operation_type = _template_to_operation_type(req.template_id)
     op_dir_name = _operation_dir_name(req.template_id, req.jira_key, req.operation_slug)
 
-    base = ainxt_root / "repos" / req.repo_name / "operations" / operation_type / op_dir_name
-
-    # Defense-in-depth: confirm the fully-resolved path still lives under
-    # ainxt_root/repos even though repo_name/jira_key/operation_slug are
-    # already validated/slugified above.
+    # Defense-in-depth: build the path through the normpath + startswith containment
+    # check (core.path_safety — the form CodeQL recognises as a path-injection
+    # barrier) so it provably lives under ainxt_root/repos even though
+    # repo_name/jira_key/operation_slug are already validated/slugified above.
+    from core.path_safety import safe_join_path
     try:
-        base.resolve().relative_to((ainxt_root / "repos").resolve())
+        base = Path(
+            safe_join_path(
+                str(ainxt_root / "repos"), req.repo_name, "operations", operation_type, op_dir_name
+            )
+        )
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid repo_name or operation identifiers")
 

@@ -419,7 +419,7 @@ class _BodySizeMiddleware(BaseHTTPMiddleware):
             return response
         except Exception as exc:
             logger.error(f"Middleware caught unhandled error: {exc}")
-            return JSONResponse(status_code=500, content={"detail": str(exc)})
+            return JSONResponse(status_code=500, content={"detail": safe_error_detail(exc)})
 
 
 app.add_middleware(_BodySizeMiddleware)
@@ -2070,7 +2070,7 @@ async def chat(req: ChatRequest, request: Request):
             result = await _run_in_pool(loop, _fn, req)
     except Exception as e:
         logger.error(f"[{req_id}] /llm/chat {req.provider} error: {e}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, safe_error_detail(e))
     logger.info(
         f"[{req_id}] CHAT DONE | stop={result['stop_reason']} "
         f"tools={len(result['tool_calls'])} in={result['input_tokens']} out={result['output_tokens']}"
@@ -2565,7 +2565,7 @@ async def veo(req: VeoRequest):
         logger.error(f"[{req_id}] veo exec failure: {exc}", exc_info=True)
         raise HTTPException(
             500,
-            {"error": "veo_generation_failed", "detail": f"{type(exc).__name__}: {exc}"},
+            {"error": "veo_generation_failed", "detail": safe_error_detail(exc)},
         )
 
     if not video_bytes:
@@ -2906,7 +2906,7 @@ async def responses_endpoint(req: ResponsesRequest, request: Request):
             return result
         except Exception as exc:
             logger.error(f"[{req_id}] RESPONSES non-stream error: {exc}")
-            raise HTTPException(500, str(exc))
+            raise HTTPException(500, safe_error_detail(exc))
 
     # Streaming path — thread pool + queue (responses_stream() is sync)
     queue: asyncio.Queue = asyncio.Queue(maxsize=4096)
@@ -3173,9 +3173,17 @@ async def net_forward(req: NetForwardRequest):
     egress. Returns {status, content_type, text} — the caller reconstructs the
     response (see connectors/net_relay.py)."""
     from urllib.parse import urlparse as _urlparse
-    host = (_urlparse(req.url).hostname or "").lower()
-    if not any(host == h or host.endswith("." + h) for h in _NET_FORWARD_ALLOW):
+    _parsed = _urlparse(req.url)
+    host = (_parsed.hostname or "").lower()
+    # SSRF guard (CWE-918): https only, default port only, EXACT allowlisted host (no suffix
+    # matching), and the outbound URL is rebuilt from the allowlist constant + path/query
+    # rather than reusing the caller-supplied URL string.
+    _allowed_host = next((h for h in _NET_FORWARD_ALLOW if h == host), None)
+    if _parsed.scheme != "https" or _allowed_host is None or _parsed.port not in (None, 443):
         raise HTTPException(403, f"host not allowed for /net/forward: {host!r}")
+    _target_url = f"https://{_allowed_host}{_parsed.path or '/'}"
+    if _parsed.query:
+        _target_url += f"?{_parsed.query}"
 
     try:
         async with _httpx.AsyncClient(timeout=req.timeout or 30.0) as client:
@@ -3186,7 +3194,7 @@ async def net_forward(req: NetForwardRequest):
             if req.content_b64 is not None:
                 import base64 as _b64
                 kwargs["content"] = _b64.b64decode(req.content_b64)
-            resp = await client.request(req.method.upper(), req.url, **kwargs)
+            resp = await client.request(req.method.upper(), _target_url, **kwargs)
 
         logger.info(f"net_forward {req.method.upper()} {host} → HTTP {resp.status_code}")
         return JSONResponse(
@@ -3639,7 +3647,7 @@ async def spend_gcp_bigquery(req: GcpBigQueryRequest, request: Request):
         rows = await _run_in_pool(loop, _run_gcp_spend_query, req.window_start, req.window_end)
     except RuntimeError as e:
         logger.error(f"[spend/gcp/bigquery] config error: {e}")
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, safe_error_detail(e))
     except Exception as e:
         logger.error(f"[spend/gcp/bigquery] query failed: {e}")
         raise HTTPException(502, f"BigQuery query failed: {e}")
@@ -3894,7 +3902,7 @@ async def web_search(req: WebSearchRequest, request: Request):
 
     except RuntimeError as exc:
         logger.error(f"[{req_id}] WEB-SEARCH UNAVAILABLE | provider={provider} error={exc}")
-        raise HTTPException(503, str(exc))
+        raise HTTPException(503, safe_error_detail(exc))
 
     except Exception as exc:
         logger.error(f"[{req_id}] WEB-SEARCH FAILED | provider={provider} tool={req.tool_name} error={exc}")

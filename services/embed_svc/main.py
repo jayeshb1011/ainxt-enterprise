@@ -435,7 +435,7 @@ async def parse_doc(req: ParseRequest):
             f"parse_svc [✗]: '{req.filename}' ({ft}) page conversion failed "
             f"latency={latency_ms:.0f}ms detail='{_pce}'"
         )
-        raise HTTPException(status_code=422, detail=str(_pce))
+        raise HTTPException(status_code=422, detail=safe_error_detail(_pce))
 
     latency_ms = (time.perf_counter() - t0) * 1000
     status_icon = "✓" if content else "∅"
@@ -461,7 +461,7 @@ async def health():
                 _inst["ok"]   = _r.status_code == 200
                 _inst["body"] = _r.text[:120]
             except Exception as _e:
-                _inst["error"] = str(_e)[:120]
+                _inst["error"] = safe_error_detail(_e)[:120]
             instance_status.append(_inst)
 
     ollama_ok   = any(i["ok"] for i in instance_status)

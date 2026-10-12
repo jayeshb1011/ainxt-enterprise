@@ -180,7 +180,8 @@ def _write_dump(run_id: str, payload: Dict[str, Any]) -> Optional[Path]:
         return None
     try:
         _SWARM_DUMP_DIR.mkdir(parents=True, exist_ok=True)
-        path = _SWARM_DUMP_DIR / f"run_{run_id}.json"
+        from core.path_safety import safe_join_path as _safe_join
+        path = Path(_safe_join(str(_SWARM_DUMP_DIR), f"run_{run_id}.json"))
         # ``default=str`` lets us drop dataclasses / Path / datetime in
         # without writing a custom encoder. ``ensure_ascii=False`` keeps
         # non-ASCII task previews readable in the file.

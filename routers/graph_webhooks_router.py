@@ -26,8 +26,10 @@ from core.logger import logger
 router = APIRouter(prefix="/webhooks", tags=["graph"])
 
 # users/{org}/onlineMeetings/{meeting}/transcripts/{tid} — with ('id') or /id forms
-_ORG_RE     = re.compile(r"users[/(]'?([^/')]+)'?[)/]")
-_MEETING_RE = re.compile(r"onlineMeetings[/(]'?([^/')]+)'?[)/]?")
+# The id class also excludes "(" so a run of "users(users(..." cannot make every start
+# position rescan the rest of the string (polynomial backtracking, py/polynomial-redos).
+_ORG_RE     = re.compile(r"users[/(]'?([^/()']+)'?[)/]")
+_MEETING_RE = re.compile(r"onlineMeetings[/(]'?([^/()']+)'?[)/]?")
 
 
 def _parse_resource(resource: str) -> tuple[Optional[str], Optional[str]]:

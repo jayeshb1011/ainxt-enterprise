@@ -395,7 +395,11 @@ def _route_command(command: str) -> dict:
         }
 
     # my leaves / pending leaves
-    if re.search(r"(my|pending|all|list|show).*(leave|leaves)", cmd_lower) or \
+    # "<trigger word> ... leave": find the EARLIEST trigger, then look for "leave" after it
+    # (equivalent to `(my|pending|all|list|show).*(leave|leaves)` but linear - the
+    # unanchored `.*` form was quadratic, py/polynomial-redos).
+    _leave_trigger = re.search(r"my|pending|all|list|show", cmd_lower)
+    if (_leave_trigger is not None and "leave" in cmd_lower[_leave_trigger.end():]) or \
        re.match(r"^(leave|leaves)\s*(list|history|status)?$", cmd_lower):
         return {
             "route":    "hr_my_leaves",
