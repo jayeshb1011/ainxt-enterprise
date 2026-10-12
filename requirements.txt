@@ -164,7 +164,7 @@ camelot-py>=0.11
 # rapidocr-onnxruntime — local ONNX OCR engine. Used for scanned PDFs,
 # embedded raster images, and standalone image uploads. CPU-only,
 # no GPU required.
-rapidocr-onnxruntime>=1.3
+rapidocr-onnxruntime>=1.4.4
 
 # ── PaddleOCR — NOT installed by default ────────────────────────
 # Moved to requirements-ocr.txt. It is a genuinely optional second OCR engine:
