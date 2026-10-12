@@ -4,4 +4,4 @@
 # No standalone FastAPI app anymore (see config.py header) — just the RQ
 # worker + httpx (used transitively via core/discussions_engine_client.py).
 httpx==0.28.1
-rq==2.7.0
+rq==2.12.0
