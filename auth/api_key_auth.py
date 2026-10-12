@@ -10,13 +10,33 @@
 # ============================================================
 
 import hashlib
+import hmac
 import os
 from datetime import datetime, timezone
 from typing import Optional
 
 
 def _sha256_hex(value: str) -> str:
+    """Legacy, unkeyed digest — kept ONLY to look up API keys issued before
+    the HMAC migration below (see `_keyed_hash_hex`). Never used for new
+    keys."""
     return hashlib.sha256(value.encode()).hexdigest()
+
+
+def _keyed_hash_hex(value: str) -> str:
+    """HMAC-SHA256 digest of `value`, keyed with JWT_SECRET.
+
+    CodeQL (py/weak-sensitive-data-hashing) flags unkeyed SHA-256 on
+    sensitive data: even though these API keys embed a uuid4 (high entropy,
+    not practically brute-forceable on its own), an unkeyed hash still means
+    anyone who steals the `user_api_keys` table can verify guesses offline
+    with no additional secret. Keying the hash with a server-side secret
+    (never stored in the DB) means a DB-only leak is not enough to verify
+    forged/guessed keys. Same digest size (64 hex chars) as the legacy
+    `_sha256_hex`, so no schema change is needed.
+    """
+    secret = os.getenv("JWT_SECRET", "")
+    return hmac.new(secret.encode(), value.encode(), hashlib.sha256).hexdigest()
 
 
 def is_api_key(token: str) -> bool:
@@ -108,15 +128,19 @@ def resolve_api_key(raw_key: str) -> Optional[dict]:
     Validate a raw API key and return a JWT-compatible payload dict, or None.
 
     Steps:
-    1. SHA-256 hash the raw key.
+    1. HMAC-SHA256 hash the raw key (keyed with JWT_SECRET).
     2. Lookup user_api_keys WHERE key_hash = <hash> AND is_active = TRUE.
+       Falls back to the legacy unkeyed SHA-256 hash for keys issued before
+       the HMAC migration, and lazily upgrades the stored hash to the keyed
+       form on first successful use of such a key.
     3. Fetch the user row and confirm the account is active.
     4. Stamp last_used_at (best-effort — never fails auth on error).
     5. Return a payload dict that matches the JWT payload contract
        (same keys: sub, email, role, ad_level, department, can_approve, etc.)
        plus auth_method = "api_key" so callers can distinguish if needed.
     """
-    key_hash = _sha256_hex(raw_key)
+    key_hash = _keyed_hash_hex(raw_key)
+    legacy_hash = _sha256_hex(raw_key)
 
     try:
         from db.database import SessionLocal
@@ -132,8 +156,28 @@ def resolve_api_key(raw_key: str) -> Optional[dict]:
                 )
                 .first()
             )
+            _needs_migration = False
+            if not api_key_row:
+                # Fall back to the legacy unkeyed hash (pre-HMAC-migration keys).
+                api_key_row = (
+                    db.query(UserAPIKey)
+                    .filter(
+                        UserAPIKey.key_hash == legacy_hash,
+                        UserAPIKey.is_active == True,  # noqa: E712
+                    )
+                    .first()
+                )
+                _needs_migration = api_key_row is not None
             if not api_key_row:
                 return None
+            if _needs_migration:
+                # Lazily upgrade this row to the keyed hash now that we have
+                # the raw key in hand (we never store the raw key itself).
+                try:
+                    api_key_row.key_hash = key_hash
+                    db.commit()
+                except Exception:
+                    db.rollback()
             # Reject expired keys
             if api_key_row.expires_at and datetime.now(timezone.utc) > api_key_row.expires_at:
                 return None

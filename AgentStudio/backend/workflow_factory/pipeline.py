@@ -974,7 +974,11 @@ def _looks_like_raw_prompt(name: str) -> bool:
     field (e.g. ``Create A Workflow For Hr Policy Question And Answer
     Agent``). We treat these as unusable and re-synthesise them.
     """
-    lower = name.lower()
+    # Cap length before the (deliberately complex, alternation-heavy)
+    # `_PROMPT_PREAMBLE_RE` is applied — a long, adversarial `name` could
+    # otherwise make a failing match expensive (CodeQL py/polynomial-redos).
+    # A real workflow title is always short, so this never affects one.
+    lower = name.lower()[:256]
     if len(lower.split()) >= 8:
         return True  # 8+ words is almost never a good workflow title
     if _PROMPT_PREAMBLE_RE.match(lower):
@@ -998,13 +1002,16 @@ def _synthesise_workflow_name(requirements: dict, user_text: str) -> str:
 
     Result is always title-cased and capped at ~60 chars.
     """
-    first_sentence = (user_text or "").split(".")[0].strip()
+    # Cap length before `_PROMPT_PREAMBLE_RE` runs — see `_looks_like_raw_prompt`
+    # for why (CodeQL py/polynomial-redos); a title's source sentence is
+    # always short in practice.
+    first_sentence = (user_text or "").split(".")[0].strip()[:256]
     # Strip the "create a workflow for …" preamble so we keep the subject only.
     subject = _PROMPT_PREAMBLE_RE.sub("", first_sentence, count=1).strip(" ,.")
     subject = subject.strip()
 
     if not subject:
-        purpose = str(requirements.get("purpose") or "").strip()
+        purpose = str(requirements.get("purpose") or "").strip()[:256]
         subject = _PROMPT_PREAMBLE_RE.sub("", purpose, count=1).strip(" ,.")
 
     if not subject:

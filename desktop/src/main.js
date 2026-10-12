@@ -918,7 +918,18 @@ const ALLOWED_COMMANDS = new Set([
 "node", "java", "go", "cargo",
 ]);
 
+// Shell metacharacters that would let a command string smuggle a SECOND,
+// non-allow-listed command past the basename-only check below (command
+// chaining/substitution: `;`, `&&`, `||`, `|`, backticks, `$(...)`, I/O
+// redirection, newlines). execSync runs this string through a real shell
+// (`/bin/sh -c` / `cmd.exe /c`), so "git status; rm -rf /" would otherwise
+// pass the check (first word is the allow-listed "git") and then execute
+// the injected command too (CWE-78).
+const _SHELL_METACHAR_RE = /[;&|`$(){}<>\n\r]/;
+
 function _isSafeCommand(cmd) {
+if (typeof cmd !== "string" || !cmd.trim()) return false;
+if (_SHELL_METACHAR_RE.test(cmd)) return false;
 const first = cmd.trim().split(/\s+/)[0].replace(/^.*[/\\]/, "");  // basename only
 return ALLOWED_COMMANDS.has(first);
 }
@@ -989,6 +1000,12 @@ throw new Error(`Desktop document extraction dependency '${name}' is not install
 }
 
 function _decodeXmlText(s) {
+// Decode entities BEFORE stripping tags, then strip tags again afterward.
+// Decoding after a tag-strip pass (the previous order here) lets an
+// encoded "&lt;script&gt;" reconstruct a literal "<script>" tag that
+// never gets removed, since no further sanitization runs after it. The
+// final `.replace(/<[^>]+>/g, "")` below closes that gap by stripping any
+// tags that decoding may have just produced.
 return String(s || "")
 .replace(/<w:tab\/>/g, "\t")
 .replace(/<w:br\/>/g, "\n")
@@ -998,6 +1015,7 @@ return String(s || "")
 .replace(/&quot;/g, '"')
 .replace(/&apos;/g, "'")
 .replace(/&amp;/g, "&")
+.replace(/<[^>]+>/g, "")
 .trim();
 }
 
@@ -1222,11 +1240,15 @@ if (!slideFile) { warnings.push(`Slide file not found: ${zipPath}`); continue; }
 const xml = await slideFile.async("string");
 
 // Strip XML tags; decode common entities; collapse whitespace.
+// Tags are stripped both BEFORE and AFTER entity decoding: decoding after
+// a single strip pass would let an encoded "&lt;script&gt;" reconstruct a
+// literal tag that never gets removed (incomplete sanitization).
 const raw = xml
 .replace(/<a:t[^>]*>/gi, " ")   // text run open tag → space separator
 .replace(/<[^>]+>/g, "")
 .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
 .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")
+.replace(/<[^>]+>/g, "")
 .replace(/\s+/g, " ").trim();
 
 if (raw) textParts.push(`### Slide ${i + 1}\n${raw}`);
@@ -1269,6 +1291,9 @@ return { text: _trimmed.text, warnings: _trimmed.warning ? [_trimmed.warning] : 
 // No external dependency — pure regex, sufficient for model consumption.
 async function _extractHtml(filePath) {
 const raw = await fs.promises.readFile(filePath, "utf-8");
+// Tags are stripped both BEFORE and AFTER entity decoding: decoding after
+// a single strip pass would let an encoded "&lt;script&gt;" reconstruct a
+// literal tag that never gets removed (incomplete sanitization).
 const text = raw
 .replace(/<script[\s\S]*?<\/script>/gi, "")   // remove scripts
 .replace(/<style[\s\S]*?<\/style>/gi, "")     // remove styles
@@ -1280,6 +1305,9 @@ const text = raw
 .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
 .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
 .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+.replace(/<script[\s\S]*?<\/script>/gi, "")
+.replace(/<style[\s\S]*?<\/style>/gi, "")
+.replace(/<[^>]+>/g, "")
 .replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 const _trimmed = _trimExtractText(text || "[HTML file appears empty]");
 return { text: _trimmed.text, warnings: _trimmed.warning ? [_trimmed.warning] : [] };
@@ -1296,7 +1324,10 @@ const contentFile = zip.file("content.xml");
 if (!contentFile) return { text: "[ODT file has no content.xml — may be corrupt]", warnings: ["content.xml not found"] };
 const xml = await contentFile.async("string");
 // ODF text:p → paragraph, text:tab → tab, text:line-break → newline.
-// Strip all remaining tags and decode XML entities.
+// Strip all remaining tags and decode XML entities. Tags are stripped both
+// before AND after decoding: decoding after a single strip pass would let
+// an encoded "&lt;script&gt;" reconstruct a literal tag that never gets
+// removed (incomplete sanitization).
 const text = xml
 .replace(/<text:line-break[^>]*\/>/gi, "\n")
 .replace(/<\/text:p>/gi, "\n")
@@ -1304,6 +1335,7 @@ const text = xml
 .replace(/<[^>]+>/g, "")
 .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
 .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")
+.replace(/<[^>]+>/g, "")
 .replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 const _trimmed = _trimExtractText(text || "[ODT file appears empty]");
 return { text: _trimmed.text, warnings: _trimmed.warning ? [_trimmed.warning] : [] };
@@ -1344,8 +1376,11 @@ cellMatches.forEach((cellXml) => {
   const repeat = repeatMatch ? Math.min(parseInt(repeatMatch[1], 10), 50) : 1;
   // Extract cell text from <text:p> elements
   const pMatches = cellXml.match(/<text:p[^>]*>([\s\S]*?)<\/text:p>/gi) || [];
+  // Tags are stripped both before AND after entity decoding: decoding
+  // after a single strip pass would let an encoded "&lt;script&gt;"
+  // reconstruct a literal tag that never gets removed.
   const cellText = pMatches
-    .map((p) => p.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").trim())
+    .map((p) => p.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/<[^>]+>/g, "").trim())
     .join(" ");
   for (let r = 0; r < repeat; r++) cells.push(cellText);
 });
@@ -1897,10 +1932,24 @@ try {
 }
 }
 if (tool === "search_files") {
-const { execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const max = Math.min(input.max_results || 20, 50);
-const raw = execSync(`grep -rl -m ${max} "${String(input.pattern).replace(/"/g, '\\"')}" "${input.folder}"`,
-  { encoding: "utf-8", timeout: 5000 }).trim();
+// execFileSync with an argv array (not execSync with an interpolated
+// string) never invokes a shell, so `pattern`/`folder` can contain
+// arbitrary characters -- including shell metacharacters -- without any
+// risk of command injection (CWE-78). Quoting/escaping a shell string is
+// never fully safe for untrusted input; avoiding the shell entirely is.
+let raw = "";
+try {
+  raw = execFileSync(
+    "grep",
+    ["-rl", "-m", String(max), "--", String(input.pattern), String(input.folder)],
+    { encoding: "utf-8", timeout: 5000 }
+  ).trim();
+} catch (grepErr) {
+  // grep exits 1 (non-error) when no matches are found.
+  if (grepErr.status !== 1) throw grepErr;
+}
 const files = raw ? raw.split("\n").filter(Boolean) : [];
 return { success: true, result: { files, count: files.length } };
 }
@@ -2353,12 +2402,28 @@ req.on("end", async () => {
       result = { entries };
 
     } else if (tool === "search_files") {
-      const { execSync } = require("child_process");
+      const { execFileSync } = require("child_process");
       const max = Math.min(input.max_results || 20, 50);
-      const raw = execSync(
-        `grep -rl --include="*.py" --include="*.js" --include="*.ts" --include="*.java" --include="*.go" -m ${max} "${input.pattern.replace(/"/g, '\\"')}" "${input.folder}"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      // execFileSync with an argv array (not execSync with an interpolated
+      // string) never invokes a shell, so `pattern`/`folder` can contain
+      // arbitrary characters -- including shell metacharacters -- without
+      // any risk of command injection (CWE-78).
+      let raw = "";
+      try {
+        raw = execFileSync(
+          "grep",
+          [
+            "-rl",
+            "--include=*.py", "--include=*.js", "--include=*.ts", "--include=*.java", "--include=*.go",
+            "-m", String(max),
+            "--", String(input.pattern), String(input.folder),
+          ],
+          { encoding: "utf-8", timeout: 5000 }
+        ).trim();
+      } catch (grepErr) {
+        // grep exits 1 (non-error) when no matches are found.
+        if (grepErr.status !== 1) throw grepErr;
+      }
       const files = raw ? raw.split("\n").filter(Boolean) : [];
       result = { files, count: files.length };
 

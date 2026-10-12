@@ -46,6 +46,7 @@ from skill_factory.pipeline import (
 
 router = APIRouter()
 from core.logger import logger
+from core.error_utils import safe_error_detail
 _registry = AgentRegistry(str(AGENTS_FILE))
 _monitor = MonitoringLogger(str(LOGS_FILE))
 
@@ -2807,9 +2808,9 @@ async def agent_runner_chat(
             **({"budget_notice": _budget.notice} if _budget.notice else {}),
         }
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=404, detail=safe_error_detail(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=safe_error_detail(exc))
     finally:
         clear_log_context()
 
@@ -3094,4 +3095,4 @@ async def agent_runner_chat_direct(
         )
         return {"response": response, "agent_name": request.agent_name}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=safe_error_detail(exc))

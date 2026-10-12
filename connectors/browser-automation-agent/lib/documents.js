@@ -315,7 +315,10 @@ async function listSheetTabs(id, signal) {
     // iteration count.
     const matches = [...html.matchAll(/id="sheet-button-(\d+)"[^>]*>([\s\S]*?)<\/li>/g)];
     matches.slice(0, MAX_SHEET_TABS).forEach((m) => {
-      const name = m[2].replace(/<[^>]*>/g, "").trim();
+      // Double-pass strip: a single pass can leave a reconstituted tag
+      // behind on overlapping/nested angle brackets (CodeQL
+      // js/incomplete-multi-character-sanitization).
+      const name = m[2].replace(/<[^>]*>/g, "").replace(/<[^>]*>/g, "").trim();
       if (name) tabs.push({ name, gid: m[1] });
     });
     return tabs;

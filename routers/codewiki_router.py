@@ -41,6 +41,7 @@ from pydantic import BaseModel, field_validator
 from db.database import pg_raw_connection, DB_SCHEMA
 from core.job_queue import enqueue_codewiki_job, cancel_job
 from core.url_masking import mask_repo_url, mask_text
+from core.error_utils import safe_error_detail
 from core.security_validation import (
     validate_codewiki_generate_request,
     validate_codewiki_regenerate_request,
@@ -625,7 +626,7 @@ def generate_docs(payload: GenerateDocsRequest, current_user: dict = Depends(get
     try:
         _resolve_repo_reachability(payload.repo_url, payload.branch, current_user)
     except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=safe_error_detail(e))
 
     submitter = current_user.get("email") or current_user.get("sub", "unknown")
     submitter_is_admin = is_admin(current_user)

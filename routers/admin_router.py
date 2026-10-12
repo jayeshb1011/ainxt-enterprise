@@ -11,6 +11,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, UploadFile, File
 from auth.rbac import require_admin_flag
 from core.logger import logger
+from core.error_utils import safe_error_detail
 from core.file_validator import validate_upload
 from core.rate_limiter import enforce_rate_limit_with_behaviour, SENSITIVE_ADMIN
 
@@ -178,7 +179,7 @@ async def sync_org_tree(
     except Exception as e:
         db.rollback()
         logger.error(f"org_tree sync failed: {e}")
-        raise HTTPException(500, f"Sync failed: {e}")
+        raise HTTPException(500, safe_error_detail(e, context="org_tree sync failed"))
     finally:
         db.close()
 
@@ -223,7 +224,7 @@ def list_local_models(_caller=Depends(require_admin_flag)):
             },
         }
     except Exception as e:
-        return {"error": str(e), "local_llm_base_url": "(not configured)"}
+        return {"error": safe_error_detail(e), "local_llm_base_url": "(not configured)"}
 
 
 @admin_router.get("/circuit-breakers")

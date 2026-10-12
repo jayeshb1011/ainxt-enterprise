@@ -21,6 +21,7 @@ from app.api.deps import require_access
 
 router = APIRouter()
 from core.logger import logger
+from core.error_utils import safe_error_detail
 # Pseudo-model id for the Chat router's "Auto" entry. Never subject to
 # governance filtering — it's a routing hint, not a real catalogue entry.
 _PSEUDO_MODEL_AUTO = "auto"
@@ -651,7 +652,7 @@ async def _fallback_openai_compatible_discovery(base_url: str):
             "default_model": None,
             "providers": [],
             "models": [],
-            "error": str(e),
+            "error": safe_error_detail(e),
         }
 
 
@@ -832,6 +833,6 @@ async def generate_workflow(
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=422, detail=f"LLM returned invalid JSON: {e}")
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=safe_error_detail(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))

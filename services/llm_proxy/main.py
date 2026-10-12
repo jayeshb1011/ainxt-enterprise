@@ -45,6 +45,7 @@ import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 
 from core.logger import logger
+from core.error_utils import safe_error_detail
 # Load .env from this directory (services/llm_proxy/.env) so credentials
 # are available without needing them in the OS environment at launch time.
 try:
@@ -642,7 +643,7 @@ def _run_sync_generator(
             f"[PROXY HOP-3] {req_id} {provider} generation failed "
             f"[{type(e).__name__}]: {e}\n{_tb.format_exc()}"
         )
-        _put(json.dumps({"error": str(e)}) + "\n")
+        _put(json.dumps({"error": safe_error_detail(e)}) + "\n")
     finally:
         # For async generators: prefer token data captured inside asyncio.run() context.
         # For sync generators: fall back to gw attributes (set in the same thread).
@@ -805,7 +806,7 @@ async def generate(req: GenerateRequest, request: Request):
             logger.error(
                 f"[{req_id}] {req.provider} generation error [{type(e).__name__}]: {e}"
             )
-            yield json.dumps({"error": str(e)}) + "\n"
+            yield json.dumps({"error": safe_error_detail(e)}) + "\n"
         finally:
             # Token counts are set on gw by usage events inside the async generator
             # and are readable here on the same event loop (ContextVar for Claude,
@@ -1008,7 +1009,7 @@ async def claude_tools_stream(req: ClaudeToolsRequest, request: Request):
             except Exception:
                 pass
             yield json.dumps({
-                "error": str(exc),
+                "error": safe_error_detail(exc),
                 "status_code": _status_code,
                 "error_type": _err_type,
             }) + "\n"
@@ -2929,7 +2930,7 @@ async def responses_endpoint(req: ResponsesRequest, request: Request):
                 _put(json.dumps(chunk) + "\n")
         except Exception as exc:
             logger.error(f"[{req_id}] RESPONSES stream error: {exc}")
-            _put(json.dumps({"error": str(exc)}) + "\n")
+            _put(json.dumps({"error": safe_error_detail(exc)}) + "\n")
         finally:
             _put(None)
 
@@ -3904,7 +3905,7 @@ async def web_search(req: WebSearchRequest, request: Request):
             "in_tok":     0,
             "out_tok":    0,
             "provider":   provider,
-            "error":      str(exc),
+            "error": safe_error_detail(exc),
         }
 
 

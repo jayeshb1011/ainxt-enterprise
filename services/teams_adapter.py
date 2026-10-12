@@ -356,6 +356,13 @@ def _route_command(command: str) -> dict:
         }
     """
     cmd_lower = command.lower().strip()
+    # Cap length before the patterns below are evaluated — in particular
+    # `(my|pending|all|list|show).*(leave|leaves)` is unanchored and can be
+    # probed at many positions, each doing an O(n) backtracking scan for the
+    # trailing alternation, which is polynomial in the worst case (CodeQL
+    # py/polynomial-redos). Teams chat commands are always short, so this
+    # can never affect a legitimate command.
+    cmd_lower = cmd_lower[:512]
 
     # fix/bug JIRA-KEY → SDLC bug pipeline
     if re.match(r"^(fix|bug|triage|resolve)\b", cmd_lower):

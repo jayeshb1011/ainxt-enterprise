@@ -1511,8 +1511,25 @@ def _resolve_file_path_attachment(raw_path: str, user_id: str = ""):
     path: Path | None = None
     if candidate.is_absolute():
         resolved = candidate.resolve()
-        if resolved.is_file():
+        # Defense-in-depth against prompt-injection-driven exfiltration: an
+        # absolute path is only honoured when it resolves under the user's
+        # home directory or /work — never arbitrary filesystem-wide paths
+        # (e.g. OS/system files outside the user's own data). This still
+        # covers every documented use case (Downloads/Desktop/Documents/
+        # any other folder under the user's profile, or /work).
+        _allowed_roots = [home.resolve(), Path("/work").resolve()] if _os.name != "nt" else [home.resolve()]
+        try:
+            _os_path_ok = any(
+                str(resolved).lower().startswith(str(_root).lower().rstrip("\\/") + _os.sep)
+                or resolved == _root
+                for _root in _allowed_roots
+            )
+        except Exception:
+            _os_path_ok = False
+        if _os_path_ok and resolved.is_file():
             path = resolved
+        elif resolved.is_file():
+            logger.warning(f"cowork_mcp: rejected out-of-scope absolute attachment path: {resolved}")
     else:
         for base in search_bases:
             try:

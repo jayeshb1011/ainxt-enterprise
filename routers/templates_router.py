@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,7 +29,7 @@ from typing import Optional
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from auth.dependencies import get_current_user, require_admin
 from core.logger import logger
@@ -91,6 +92,16 @@ class InitOperationRequest(BaseModel):
     jira_key: str
     operation_slug: Optional[str] = None  # e.g. 'spring-boot-3-migration'; derived from jira_key if absent
     inputs: dict = Field(default_factory=dict)
+
+    @field_validator("repo_name")
+    @classmethod
+    def _validate_repo_name(cls, v: str) -> str:
+        # repo_name becomes a single path component under ainxt_root/repos —
+        # reject anything that isn't a plain directory-name-safe string so a
+        # value like "../../etc" can never escape the repos folder.
+        if not v or not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", v) or v in (".", ".."):
+            raise ValueError("repo_name must be a simple name (letters, digits, '.', '_', '-' only)")
+        return v
 
 
 class InitOperationResponse(BaseModel):
@@ -173,9 +184,14 @@ def _template_to_operation_type(template_id: str) -> str:
 
 
 def _operation_dir_name(template_id: str, jira_key: str, operation_slug: Optional[str]) -> str:
-    """Build the operation directory name: <jira>_<slug>."""
-    slug = operation_slug or _slugify(jira_key)
-    return f"{jira_key}_{_slugify(slug)}"
+    """Build the operation directory name: <jira>_<slug>.
+
+    Both components are slugified (not just the slug) so a jira_key
+    containing path separators or `..` can never escape the operations
+    folder when this value is later used to build a filesystem path.
+    """
+    slug = operation_slug or jira_key
+    return f"{_slugify(jira_key)}_{_slugify(slug)}"
 
 
 def _now_iso() -> str:
@@ -249,6 +265,14 @@ def init_operation(
     op_dir_name = _operation_dir_name(req.template_id, req.jira_key, req.operation_slug)
 
     base = ainxt_root / "repos" / req.repo_name / "operations" / operation_type / op_dir_name
+
+    # Defense-in-depth: confirm the fully-resolved path still lives under
+    # ainxt_root/repos even though repo_name/jira_key/operation_slug are
+    # already validated/slugified above.
+    try:
+        base.resolve().relative_to((ainxt_root / "repos").resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid repo_name or operation identifiers")
 
     if base.exists():
         # Don't clobber an existing operation

@@ -62,7 +62,7 @@ from services.embed_svc.config import (
     PARSE_SVC_ENABLED,
 )
 from core.logger import logger
-
+from core.error_utils import safe_error_detail
 # ── Singletons (created during lifespan) ──────────────────────
 _cache:   EmbedCache      | None = None
 _ollama:  OllamaEmbedder  | None = None
@@ -328,7 +328,7 @@ async def embed(req: EmbedRequest):
             f"embed_svc [✗]: {type(exc).__name__}: {exc} | "
             f"texts={len(req.texts)} max_chars={max(lens)} latency={latency_ms:.0f}ms"
         )
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=safe_error_detail(exc))
 
     latency_ms = (time.perf_counter() - t0) * 1000
     logger.info(

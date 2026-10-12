@@ -16,6 +16,7 @@ from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException, D
 from fastapi.concurrency import run_in_threadpool
 
 from core.logger import logger
+from core.error_utils import safe_error_detail
 from auth.dependencies import get_current_user
 from core.file_validator import validate_upload
 from core.rate_limiter import enforce_rate_limit_with_behaviour, FILE_UPLOAD
@@ -505,7 +506,7 @@ def get_chat_messages(chat_id: str, current_user: dict = Depends(get_current_use
         finally:
             db.close()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # DELETE CHAT
@@ -530,7 +531,7 @@ def delete_chat(chat_id: str, current_user: dict = Depends(get_current_user)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # RENAME CHAT
@@ -564,7 +565,7 @@ def rename_chat(chat_id: str, body: dict, current_user: dict = Depends(get_curre
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # PIN / UNPIN CHAT
@@ -590,7 +591,7 @@ def toggle_pin_chat(chat_id: str, current_user: dict = Depends(get_current_user)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # UPDATE RAG MODE  (Chat-level Generic | Knowledge Base toggle)
@@ -1665,7 +1666,7 @@ def create_artifact(chat_id: str, body: dict, current_user: dict = Depends(get_c
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.get("/chats/{chat_id}/artifacts")
 def list_artifacts(chat_id: str, current_user: dict = Depends(get_current_user)):
@@ -1704,7 +1705,7 @@ def list_artifacts(chat_id: str, current_user: dict = Depends(get_current_user))
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.get("/chats/{chat_id}/artifacts/{artifact_id}")
 def get_artifact(chat_id: str, artifact_id: str, current_user: dict = Depends(get_current_user)):
@@ -1738,7 +1739,7 @@ def get_artifact(chat_id: str, artifact_id: str, current_user: dict = Depends(ge
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # PUBLIC SHARE LINKS
@@ -1798,7 +1799,7 @@ def create_chat_share(chat_id: str, request: Request, current_user: dict = Depen
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 def _resolve_share_base_url(request: Request) -> str:
     """Derive a public base URL for share links.
@@ -1879,7 +1880,7 @@ def get_shared_chat(token: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # SAVED PROMPT TEMPLATES
@@ -1918,7 +1919,7 @@ def list_prompt_templates(current_user: dict = Depends(get_current_user)):
         finally:
             db.close()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.post("/prompt-templates")
 def create_prompt_template(body: dict, current_user: dict = Depends(get_current_user)):
@@ -1958,7 +1959,7 @@ def create_prompt_template(body: dict, current_user: dict = Depends(get_current_
         finally:
             db.close()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.delete("/prompt-templates/{tpl_id}")
 def delete_prompt_template(tpl_id: str, current_user: dict = Depends(get_current_user)):
@@ -1982,7 +1983,7 @@ def delete_prompt_template(tpl_id: str, current_user: dict = Depends(get_current
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # EDIT + BRANCH PAST MESSAGES
@@ -2101,7 +2102,7 @@ def edit_message(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.get("/chats/{chat_id}/messages/{message_id}/versions")
 def list_message_versions(
@@ -2143,7 +2144,7 @@ def list_message_versions(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # AUTO-TITLE (LLM-generated, 4–7 words)
@@ -2236,7 +2237,7 @@ def auto_title_chat(chat_id: str, current_user: dict = Depends(get_current_user)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.post("/chats")
 def create_chat(body: dict, current_user: dict = Depends(get_current_user)):
@@ -2421,7 +2422,7 @@ def create_chat(body: dict, current_user: dict = Depends(get_current_user)):
         raise
     except Exception as e:
         logger.warning(f"create_chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.patch("/chats/{chat_id}/rag-mode")
 def update_chat_rag_mode(chat_id: str, body: dict, current_user: dict = Depends(get_current_user)):
@@ -2452,7 +2453,7 @@ def update_chat_rag_mode(chat_id: str, body: dict, current_user: dict = Depends(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 @router.patch("/chats/{chat_id}/scope")
 def update_chat_scope(chat_id: str, body: dict, current_user: dict = Depends(get_current_user)):
@@ -2582,7 +2583,7 @@ def update_chat_scope(chat_id: str, body: dict, current_user: dict = Depends(get
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # GET ATTACHMENT METADATA
@@ -2628,7 +2629,7 @@ def get_attachment(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # GET ATTACHMENT RAW BYTES  (server-side upload persistence)
@@ -2744,7 +2745,7 @@ def delete_attachment(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # MESSAGE FEEDBACK  (human preference signal)
@@ -2843,7 +2844,7 @@ def submit_message_feedback(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=safe_error_detail(e))
 
 # ============================================================
 # STOP GENERATION  (cooperative cancellation of active streams)
