@@ -11,7 +11,7 @@
     "build": "npm --prefix frontend run build"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^10.0.6"
   },
   "license": "MIT"
 }
