@@ -1458,19 +1458,21 @@ def _oauth_complete(connector_name: str, success: bool, error: str = "") -> HTML
     # information exposure): log the real error server-side and show a fixed code.
     if error:
         logger.warning(f"OAuth connect failed for connector {connector_name!r}: {str(error)[:200]!r}")
-        error = "connection_failed"
-    target = _ui_redirect(connector_name, success, error)
+    # A constant expression: the page only ever sees one of two fixed values, chosen by whether
+    # an error was reported - never the caller-supplied text itself (py/reflective-xss).
+    page_error = "connection_failed" if error else ""
+    target = _ui_redirect(connector_name, success, page_error)
     payload = {
         "type": "ainxt:connector-oauth",
         "connector": connector_name,
         "success": success,
-        "error": error[:100] if error else "",
+        "error": page_error,
     }
     title = "Connection complete" if success else "Connection failed"
     message = (
         f"{connector_name} connected successfully. You can close this window."
         if success else
-        f"{connector_name} could not connect: {error or 'unknown error'}. You can close this window."
+        f"{connector_name} could not connect: {page_error or 'unknown error'}. You can close this window."
     )
     payload_json = json.dumps(payload).replace("</", "<\\/")
     target_json = json.dumps(target).replace("</", "<\\/")

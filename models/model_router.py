@@ -1573,7 +1573,8 @@ class ModelRouter:
             yield from gw.generate(prompt, model=provider_model, **call_kwargs)
         except Exception as e:
             logger.warning(f"ModelRouter: registry stream dispatch failed for {provider_model!r} ({family}) → {e}")
-            yield f"Error: {provider_model} call failed ({e})"
+            from core.error_utils import safe_error_detail
+            yield f"Error: {provider_model} call failed ({safe_error_detail(e)})"
 
     # --------------------------------------------------------
     # SIGNAL DETECTION

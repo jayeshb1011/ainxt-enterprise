@@ -497,7 +497,7 @@ async def health():
         except asyncio.TimeoutError:
             nomic_svc_err = f"timeout 10s — {NOMIC_EMBED_URL} not responding"
         except Exception as e:
-            nomic_svc_err = f"{type(e).__name__}: {e}"
+            nomic_svc_err = safe_error_detail(e)
     else:
         nomic_svc_err = "disabled (NOMIC_EMBED_URL not set)"
 

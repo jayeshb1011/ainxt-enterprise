@@ -972,8 +972,15 @@ const bin = [...ALLOWED_COMMANDS].find((c) => c === base);
 if (!bin) throw new Error("Command not allowed.");
 const opts = { cwd: cwd || process.env.HOME, encoding: "utf-8", timeout: 15000 };
 if (process.platform === "win32" && _WIN_SHELL_SHIMS.has(bin)) {
-// .cmd shims need a shell on Windows; the string already passed _isSafeCommand.
-return execSync(cmd, opts);
+// .cmd shims need a shell on Windows. The command line is REBUILT from the allow-list
+// constant `bin` (never the caller's string, which could name a different path such as
+// "C:\\somewhere\\npm") plus arguments limited to a plain character set: no spaces, quotes,
+// %, ^, !, &, |, <, > or other cmd.exe metacharacters can reach the shell.
+const shimArgs = argv.slice(1);
+if (!shimArgs.every((a) => /^[A-Za-z0-9_@+=:,./\\-]*$/.test(a))) {
+throw new Error("Unsupported characters in an argument for this command on Windows.");
+}
+return execSync([bin, ...shimArgs].join(" "), opts);
 }
 return execFileSync(bin, argv.slice(1), opts);
 }

@@ -374,7 +374,8 @@ def _fetch_local_models() -> tuple[list[str], str]:
         ids = list(_get_local_gw().list_models() or [])
         return ids, ""
     except Exception as e:
-        return [], f"local list_models() failed: {e}"
+        logger.warning(f"[AGENT] local list_models() failed: {e}")
+        return [], "local list_models() failed (see server log)"
 
 
 def _ensure_local_provider_group(providers: list, local_ids: list[str]) -> list:

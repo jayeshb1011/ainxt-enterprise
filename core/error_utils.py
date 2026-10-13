@@ -8,10 +8,12 @@ give callers a single, consistent way to:
 
   1. Always log the *full* exception (with traceback) server-side so nothing
      is lost for debugging/observability.
-  2. Return a client-safe message: the real exception text in non-production
-     environments (to keep local/dev debugging ergonomic), and a generic,
-     non-identifying message in production so internals are never leaked to
-     external users.
+  2. Return a client-safe message: a constant string chosen by exception
+     type, in every environment, so internals are never leaked to callers.
+
+NOTE: services/llm_proxy/core/error_utils.py is a deliberate copy of this file.
+llm_proxy puts its own directory first on sys.path, so its `core` package
+shadows this one; keep the two in sync.
 """
 from __future__ import annotations
 

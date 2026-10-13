@@ -9760,7 +9760,7 @@ async def ask_ai(q: Question, request: Request, authorization: Optional[str] = _
                     _cmeta["cost"]    = _estimate_cost(_cmeta["model"], _cmeta["in_tok"], _cmeta["out_tok"])
             except Exception as _ce:
                 logger.error(f"[CLI] direct stream error: {_ce}")
-                yield "data: " + json.dumps({"t": f"\n[Error: {_ce}]"}) + "\n\n"
+                yield "data: " + json.dumps({"t": "\n[Error: the request could not be completed]"}) + "\n\n"
                 _cmeta["latency"] = time.time() - _t0
             finally:
                 _LLM_SEMAPHORE.release()
