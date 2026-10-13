@@ -242,10 +242,10 @@ const api = {
     // tool-image cap) before redaction.
     let b64;
     try {
-      const Jimp = require("jimp");
+      const { Jimp, JimpMime } = require("jimp");
       const j = await Jimp.read(buf);
-      if (Math.max(j.bitmap.width, j.bitmap.height) > 1400) j.scaleToFit(1400, 1400);
-      b64 = (await j.getBufferAsync(Jimp.MIME_PNG)).toString("base64");
+      if (Math.max(j.bitmap.width, j.bitmap.height) > 1400) j.scaleToFit({ w: 1400, h: 1400 });
+      b64 = (await j.getBuffer(JimpMime.png)).toString("base64");
     } catch { b64 = buf.toString("base64"); }
     const red = await _redactImage(opts, b64);
     if (!red.ok) {

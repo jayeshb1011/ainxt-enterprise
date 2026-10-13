@@ -965,22 +965,26 @@ const _WIN_SHELL_SHIMS = new Set(["npm", "yarn", "mvn", "gradle"]);
 // ALLOWED_COMMANDS constant (never the caller's path), arguments are an argv array,
 // so nothing the caller typed is ever interpreted by /bin/sh or cmd.exe (CWE-78).
 function _runAllowedCommand(cmd, cwd) {
-const { execFileSync, execSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const argv = _tokenizeCommand(cmd);
 const base = (argv[0] || "").replace(/^.*[/\\]/, "");
 const bin = [...ALLOWED_COMMANDS].find((c) => c === base);
 if (!bin) throw new Error("Command not allowed.");
 const opts = { cwd: cwd || process.env.HOME, encoding: "utf-8", timeout: 15000 };
 if (process.platform === "win32" && _WIN_SHELL_SHIMS.has(bin)) {
-// .cmd shims need a shell on Windows. The command line is REBUILT from the allow-list
-// constant `bin` (never the caller's string, which could name a different path such as
-// "C:\\somewhere\\npm") plus arguments limited to a plain character set: no spaces, quotes,
-// %, ^, !, &, |, <, > or other cmd.exe metacharacters can reach the shell.
+// .cmd shims need a shell on Windows. `bin` comes from the allow-list
+// constant (never the caller's string, which could name a different path
+// such as "C:\\somewhere\\npm"). Arguments are passed as an ARRAY to
+// execFileSync with shell:true rather than manually joined into a single
+// command string: Node quotes/escapes each array element itself before
+// handing the line to cmd.exe, so nothing the caller typed can be
+// interpreted as a shell metacharacter (CWE-78). The character allow-list
+// below is kept as defense-in-depth on top of that.
 const shimArgs = argv.slice(1);
 if (!shimArgs.every((a) => /^[A-Za-z0-9_@+=:,./\\-]*$/.test(a))) {
 throw new Error("Unsupported characters in an argument for this command on Windows.");
 }
-return execSync([bin, ...shimArgs].join(" "), opts);
+return execFileSync(bin, shimArgs, { ...opts, shell: true });
 }
 return execFileSync(bin, argv.slice(1), opts);
 }

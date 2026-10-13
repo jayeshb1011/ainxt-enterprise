@@ -90,6 +90,7 @@
     "@lezer/common": "^1.5.2",
     "@lezer/highlight": "^1.2.3",
     "@lezer/lr": "^1.4.10",
-    "katex": "$katex"
+    "katex": "$katex",
+    "postcss-selector-parser": "^7.1.6"
   }
 }
