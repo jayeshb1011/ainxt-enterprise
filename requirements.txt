@@ -126,6 +126,10 @@ markdown==3.10.2
 # pillow<14. TODO: once a docling release newer than 2.141.0 is on PyPI, replace
 # this line with `docling>=2.142,<3.0`.
 docling-slim[standard] @ https://github.com/docling-project/docling/archive/ed66a3c8520933221c977292b875a0d8d939b6fd.zip
+# docling-core caps pillow<13 in every release too (latest 2.103.1). Pinned to upstream
+# commit e1b282a ("fix: support Pillow 13 and integer PNG exports", #907; 2.103.1 plus a
+# DocLang 0.8 caption change). TODO: drop with the docling-slim pin above once released.
+docling-core[chunking] @ https://github.com/docling-project/docling-core/archive/e1b282ab8d61b19f458c99ef7d6549f6a03fb86f.zip
 # Pinned exact + CPU-only build so docling's own unconstrained `torch`
 # requirement resolves to these instead of the default CUDA-enabled Linux
 # wheel — see the --extra-index-url note above. Linux-only marker: torch's
