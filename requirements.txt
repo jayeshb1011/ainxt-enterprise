@@ -57,7 +57,7 @@ redis==7.1.1
 rq==2.7.0
 apscheduler>=3.10.0,<4.0.0
 croniter==6.2.2
-kafka-python==2.3.2
+kafka-python==3.0.11
 # ldap3==2.9.1  <- latest available on PyPI (2.9.1); MOVED to
 #               requirements-ldap.txt (LGPL-3.0-only), so a default install
 #               carries no LGPL-3.0.  LDAP auth is disabled without it and
