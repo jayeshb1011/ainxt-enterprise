@@ -102,8 +102,8 @@ tenacity==9.1.4
 # (pypdfium2 + pypdf + pdfplumber + markitdown — all permissive: BSD-3-Clause /
 # Apache-2.0 / MIT).
 pypdfium2==4.30.0
-pypdf==6.19.0
-pillow==12.3.0
+pypdf==6.21.1
+pillow==13.0.0
 pandas==2.3.3
 openpyxl==3.1.5
 xlrd==2.0.2
