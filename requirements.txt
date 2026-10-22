@@ -43,7 +43,7 @@ defusedxml==0.7.1               # PSF-2.0 (Python Software Foundation License �
 # fail to resolve. Install it from your vendor directly if you need HSM.
 # Without it, the platform boots using BASE:-prefixed keys (plain base64 DEKs).
 # See: pyproject.toml (lines 15-19) and core/ckms/hsm_gateway.py
-pycryptodome==3.23.0
+pycryptodome==3.24.0
 
 # ── Persistence, queues, and integrations ───────────────────────
 SQLAlchemy==2.0.52
