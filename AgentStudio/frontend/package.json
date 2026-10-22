@@ -28,7 +28,7 @@
     "@xyflow/react": "^12.10.0",
     "agent-chain-workspace": "file:..",
     "axios": "^1.19.0",
-    "framer-motion": "^12.40.0",
+    "framer-motion": "^14.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
